@@ -1,0 +1,11 @@
+services:
+  timetracking-dashboard:
+    build: .
+    container_name: timetracking-dashboard
+    restart: unless-stopped
+    ports:
+      - "8010:8080"
+    volumes:
+      - ./data:/app/data
+    environment:
+      - TIMETRACKING_DB_PATH=/app/data/timetracking.db

@@ -1,0 +1,259 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Timetracking Dashboard</title>
+    <link rel="stylesheet" href="/static/styles.css?v=20260707-3" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar">
+        <div class="brand">
+          <span class="brand-mark"></span>
+          <span>Timetrack</span>
+        </div>
+        <nav class="nav" aria-label="Main">
+          <button class="nav-item active" data-view="tasks" aria-label="Tasks">
+            <span class="icon task-icon"></span>
+            <span>Tasks</span>
+          </button>
+          <button class="nav-item" data-view="timeline" aria-label="Timeline">
+            <span class="icon timeline-icon"></span>
+            <span>Timeline</span>
+          </button>
+          <button class="nav-item" data-view="reports" aria-label="Reports">
+            <span class="icon report-icon"></span>
+            <span>Reports</span>
+          </button>
+          <button class="nav-item" data-view="settings" aria-label="Settings">
+            <span class="icon settings-icon"></span>
+            <span>Settings</span>
+          </button>
+          <button class="nav-item" data-view="admin" aria-label="Admin">
+            <span class="icon admin-icon"></span>
+            <span>Admin</span>
+          </button>
+        </nav>
+      </aside>
+
+      <main class="content">
+        <section class="view active" id="tasks-view" aria-labelledby="tasks-title">
+          <header class="topbar">
+            <div>
+              <div class="eyebrow" id="today-label"></div>
+              <h1 id="tasks-title">Tasks</h1>
+            </div>
+            <div class="top-actions">
+              <button class="icon-button" id="add-task" aria-label="Add task" title="Add task">+</button>
+              <button class="text-button" id="archive-toggle">Archive</button>
+            </div>
+          </header>
+
+          <div class="task-tabs" role="tablist" aria-label="Task filters">
+            <button class="task-tab active" data-filter="active">Tasks</button>
+            <button class="task-tab" data-filter="recent">Recent</button>
+            <button class="task-tab" data-filter="archive">Archive</button>
+          </div>
+
+          <div class="dashboard-grid">
+            <section class="panel task-panel">
+              <div class="task-list" id="task-list"></div>
+            </section>
+            <section class="panel live-panel">
+              <div class="panel-heading">
+                <span>Current Session</span>
+                <button class="small-button" id="stop-session">Stop</button>
+              </div>
+              <div class="live-session" id="live-session">
+                <span class="muted">No task is running</span>
+              </div>
+            </section>
+          </div>
+        </section>
+
+        <section class="view" id="timeline-view" aria-labelledby="timeline-title">
+          <header class="topbar">
+            <div>
+              <div class="eyebrow" id="timeline-date"></div>
+              <h1 id="timeline-title">Timeline</h1>
+            </div>
+            <button class="icon-button" id="refresh-timeline" aria-label="Refresh timeline" title="Refresh">↻</button>
+          </header>
+          <div class="week-strip" id="week-strip"></div>
+          <section class="timeline-board" id="timeline-board"></section>
+        </section>
+
+        <section class="view" id="reports-view" aria-labelledby="reports-title">
+          <header class="topbar">
+            <div>
+              <div class="eyebrow">Year overview</div>
+              <h1 id="reports-title">Reports</h1>
+            </div>
+            <div class="segmented" aria-label="Report range">
+              <button>Day</button>
+              <button>Week</button>
+              <button>Month</button>
+              <button class="active">Year</button>
+            </div>
+          </header>
+
+          <div class="year-picker">
+            <span>2025</span>
+            <strong>2026</strong>
+            <span>2027</span>
+          </div>
+
+          <div class="report-grid">
+            <section class="panel">
+              <div class="metric-row">
+                <div>
+                  <span class="label">Time Tracked</span>
+                  <strong id="total-time">0:00</strong>
+                </div>
+                <div>
+                  <span class="label">Monthly Avg.</span>
+                  <strong id="monthly-average">0:00</strong>
+                </div>
+              </div>
+              <div class="bar-chart" id="bar-chart"></div>
+            </section>
+            <section class="panel">
+              <div class="panel-heading">
+                <span>By Tasks</span>
+              </div>
+              <div class="task-breakdown" id="task-breakdown"></div>
+            </section>
+          </div>
+
+          <section class="panel sessions-panel">
+            <div class="panel-heading">
+              <span>Sessions</span>
+            </div>
+            <div id="session-list"></div>
+          </section>
+        </section>
+
+        <section class="view" id="settings-view" aria-labelledby="settings-title">
+          <header class="topbar">
+            <div>
+              <div class="eyebrow">Server</div>
+              <h1 id="settings-title">Settings</h1>
+            </div>
+          </header>
+          <section class="panel settings-panel">
+            <div class="setting-row">
+              <div>
+                <strong>Docker port</strong>
+                <span>Host 8010 maps to container 8080.</span>
+              </div>
+              <code>http://localhost:8010</code>
+            </div>
+            <div class="setting-row">
+              <div>
+                <strong>Cloudflare Tunnel origin</strong>
+                <span>Point the tunnel service to the host port.</span>
+              </div>
+              <code>http://localhost:8010</code>
+            </div>
+            <div class="setting-row">
+              <div>
+                <strong>Storage</strong>
+                <span>SQLite database persisted through the Docker volume mount.</span>
+              </div>
+              <code>/app/data/timetracking.db</code>
+            </div>
+          </section>
+        </section>
+
+        <section class="view" id="admin-view" aria-labelledby="admin-title">
+          <header class="topbar">
+            <div>
+              <div class="eyebrow">Database viewer</div>
+              <h1 id="admin-title">Admin</h1>
+            </div>
+            <button class="icon-button" id="refresh-admin" aria-label="Refresh admin data" title="Refresh">↻</button>
+          </header>
+          <section class="panel admin-summary" id="admin-summary"></section>
+          <section class="panel admin-panel">
+            <div class="panel-heading">
+              <span>Sessions</span>
+            </div>
+            <div class="admin-table-wrap">
+              <table class="admin-table">
+                <thead>
+                  <tr>
+                    <th>ID</th>
+                    <th>Task</th>
+                    <th>Started UTC</th>
+                    <th>Started KST</th>
+                    <th>Ended KST</th>
+                    <th>Duration</th>
+                  </tr>
+                </thead>
+                <tbody id="admin-session-rows"></tbody>
+              </table>
+            </div>
+          </section>
+        </section>
+      </main>
+    </div>
+
+    <dialog id="task-dialog">
+      <form method="dialog" class="dialog-form" id="task-form">
+        <h2>New Task</h2>
+        <label>
+          Name
+          <input id="task-name" maxlength="80" required autocomplete="off" />
+        </label>
+        <label>
+          Color
+          <input id="task-color" type="color" value="#0a84ff" />
+        </label>
+        <div class="dialog-actions">
+          <button value="cancel" class="text-button">Cancel</button>
+          <button value="default" class="primary-button">Create</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="session-dialog" class="session-dialog">
+      <form method="dialog" class="session-form" id="session-form">
+        <header class="session-form-header">
+          <button type="button" class="text-button" id="cancel-session-edit">Cancel</button>
+          <h2>Edit Session</h2>
+          <button type="submit" class="text-button">Save</button>
+        </header>
+
+        <section class="session-time-card">
+          <label>
+            <span>From</span>
+            <input id="session-start" type="datetime-local" step="1" required />
+          </label>
+          <label>
+            <span>To</span>
+            <input id="session-end" type="datetime-local" step="1" />
+          </label>
+          <div class="session-duration-row">
+            <span>Duration</span>
+            <strong id="session-duration">0:00</strong>
+          </div>
+        </section>
+
+        <label class="session-field-row">
+          <span>Task</span>
+          <select id="session-task"></select>
+        </label>
+
+        <label class="session-notes-field">
+          <span>Notes</span>
+          <textarea id="session-notes" rows="5" placeholder="Notes"></textarea>
+        </label>
+
+        <button type="button" class="delete-session-button" id="delete-session">Delete Session</button>
+      </form>
+    </dialog>
+
+    <script src="/static/app.js?v=20260707-3"></script>
+  </body>
+</html>
