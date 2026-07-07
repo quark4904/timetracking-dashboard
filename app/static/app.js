@@ -30,6 +30,13 @@ const taskColors = [
   "#bf7af0", "#ff7ac7", "#ff767d", "#c49a63", "#8aef00", "#10e69a", "#28d7d7", "#45d0e8", "#8198ff",
 ];
 
+const icons = {
+  play: `<svg class="row-icon" aria-hidden="true" viewBox="0 0 24 24"><path d="M8 5v14l11-7Z" /></svg>`,
+  pause: `<svg class="row-icon" aria-hidden="true" viewBox="0 0 24 24"><path d="M9 5v14" /><path d="M15 5v14" /></svg>`,
+  info: `<svg class="button-icon" aria-hidden="true" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" /><path d="M12 11v5" /><path d="M12 8h.01" /></svg>`,
+  grip: `<svg class="button-icon" aria-hidden="true" viewBox="0 0 24 24"><path d="M8 6h.01" /><path d="M16 6h.01" /><path d="M8 12h.01" /><path d="M16 12h.01" /><path d="M8 18h.01" /><path d="M16 18h.01" /></svg>`,
+};
+
 function secondsBetween(start, end) {
   return Math.max(0, Math.floor((new Date(end || Date.now()) - new Date(start)) / 1000));
 }
@@ -158,11 +165,11 @@ function renderTasks() {
       return `
         <div class="task-row editing" style="--task-color:${task.color}" data-task-id="${task.id}" draggable="true">
           <div class="task-main">
-            <span class="play"></span>
+            <span class="task-run-icon">${icons.play}</span>
             <span class="task-name">${escapeHtml(task.name)}</span>
           </div>
-          <button class="task-info-button" aria-label="Edit ${escapeHtml(task.name)}">i</button>
-          <button class="task-drag-handle" aria-label="Move ${escapeHtml(task.name)}">☰</button>
+          <button class="task-info-button" aria-label="Edit ${escapeHtml(task.name)}">${icons.info}</button>
+          <button class="task-drag-handle" aria-label="Move ${escapeHtml(task.name)}">${icons.grip}</button>
         </div>
       `;
     }).join("") || `<div class="muted">No tasks here yet</div>`;
@@ -176,7 +183,7 @@ function renderTasks() {
     const icon = isRunning ? "pause" : "play";
     return `
       <button class="task-row ${isRunning ? "running" : ""}" style="--task-color:${task.color}" data-task-id="${task.id}">
-        <span class="${icon}"></span>
+        <span class="task-run-icon">${icons[icon]}</span>
         <span class="task-name">${escapeHtml(task.name)}</span>
         <span class="task-time">${formatDuration(taskTotal(task), isRunning)}</span>
       </button>
