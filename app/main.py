@@ -104,8 +104,11 @@ def stop_session() -> dict:
 
 
 @app.get("/api/sessions")
-def sessions() -> list[dict]:
-    return repository.list_sessions()
+def sessions(start: str | None = None, end: str | None = None) -> list[dict]:
+    try:
+        return repository.list_sessions(start, end)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @app.patch("/api/sessions/{session_id}")

@@ -1,7 +1,10 @@
 const state = {
   tasks: [],
   sessions: [],
+  reportSessions: [],
   admin: null,
+  sessionsMonth: null,
+  reportYear: new Date().getFullYear(),
   filter: "active",
   activeView: "tasks",
   editingSessionId: null,
@@ -9,7 +12,7 @@ const state = {
   editingTaskId: null,
   editingTaskColor: "#0a84ff",
   newTaskColor: "#4da1ff",
-  timelineDate: "2026-07-07",
+  timelineDate: dateKey(new Date()),
 };
 
 const fmt = new Intl.DateTimeFormat("en", { month: "long", day: "numeric", year: "numeric" });
@@ -81,15 +84,66 @@ async function api(path, options = {}) {
 }
 
 async function loadData() {
-  const [tasks, sessions, admin] = await Promise.all([
+  const [tasks, sessions] = await Promise.all([
     api("/api/tasks?include_archived=true"),
-    api("/api/sessions"),
-    api("/api/admin/db"),
+    fetchTimelineSessions(true),
   ]);
   state.tasks = tasks;
   state.sessions = sessions;
-  state.admin = admin;
   render();
+}
+
+function monthRangeForDateKey(value) {
+  const date = dateFromKey(value);
+  const start = new Date(date.getFullYear(), date.getMonth(), 1);
+  const end = new Date(date.getFullYear(), date.getMonth() + 1, 1);
+  return {
+    key: `${start.getFullYear()}-${String(start.getMonth() + 1).padStart(2, "0")}`,
+    start: dateKey(start),
+    end: dateKey(end),
+  };
+}
+
+function sessionsPathForRange(start, end) {
+  const startIso = `${start}T00:00:00+09:00`;
+  const endIso = `${end}T00:00:00+09:00`;
+  return `/api/sessions?start=${encodeURIComponent(startIso)}&end=${encodeURIComponent(endIso)}`;
+}
+
+async function fetchTimelineSessions(force = false) {
+  const range = monthRangeForDateKey(state.timelineDate);
+  if (!force && state.sessionsMonth === range.key) return state.sessions;
+  const sessions = await api(sessionsPathForRange(range.start, range.end));
+  state.sessionsMonth = range.key;
+  return sessions;
+}
+
+async function loadTimelineSessions(force = false) {
+  state.sessions = await fetchTimelineSessions(force);
+  renderTasks();
+  renderTimeline();
+}
+
+async function loadReportData(force = false) {
+  if (!force && state.reportSessions.length) {
+    renderReports();
+    return;
+  }
+  const start = `${state.reportYear}-01-01`;
+  const end = `${state.reportYear + 1}-01-01`;
+  state.reportSessions = await api(sessionsPathForRange(start, end));
+  renderReports();
+}
+
+async function loadAdminData() {
+  state.admin = await api("/api/admin/db");
+  renderAdmin();
+}
+
+async function reloadVisibleData() {
+  await loadData();
+  if (state.activeView === "reports") await loadReportData(true);
+  if (state.activeView === "admin") await loadAdminData();
 }
 
 function activeSession() {
@@ -215,7 +269,7 @@ function renderTasks() {
       const taskId = Number(row.dataset.taskId);
       if (active?.task_id === taskId) await api("/api/sessions/stop", { method: "POST" }).catch(() => null);
       else await api(`/api/tasks/${taskId}/start`, { method: "POST" });
-      await loadData();
+      await reloadVisibleData();
     });
   });
 }
@@ -271,7 +325,7 @@ async function moveTaskBefore(sourceId, targetId) {
     method: "POST",
     body: JSON.stringify({ task_ids: state.tasks.map((task) => task.id) }),
   });
-  await loadData();
+  await reloadVisibleData();
 }
 
 function openTaskEditor(taskId) {
@@ -338,11 +392,12 @@ function renderWeekStrip() {
   });
 }
 
-function setTimelineDate(value) {
+async function setTimelineDate(value) {
   state.timelineDate = value;
   document.getElementById("timeline-date").textContent = fmt.format(dateFromKey(state.timelineDate));
   document.getElementById("timeline-date-picker").value = state.timelineDate;
   renderWeekStrip();
+  await loadTimelineSessions();
   renderTimeline();
 }
 
@@ -388,7 +443,7 @@ function renderTimeline() {
 function renderReports() {
   const totalByTask = new Map();
   const totalByMonth = Array(12).fill(0);
-  state.sessions.forEach((session) => {
+  state.reportSessions.forEach((session) => {
     const seconds = secondsBetween(session.started_at, session.ended_at);
     totalByTask.set(session.task_id, (totalByTask.get(session.task_id) || 0) + seconds);
     totalByMonth[kstMonthIndex(session.started_at)] += seconds;
@@ -422,7 +477,7 @@ function renderReports() {
   }).join("");
 
   const sessionList = document.getElementById("session-list");
-  sessionList.innerHTML = state.sessions.map((session) => `
+  sessionList.innerHTML = state.reportSessions.map((session) => `
     <button class="session-row session-edit-trigger" data-session-id="${session.id}" style="--task-color:${session.task_color}">
       <div class="session-times">
         <span>${timeFmt.format(new Date(session.started_at))}</span>
@@ -484,11 +539,19 @@ function bindSessionEditTriggers(root) {
 }
 
 function selectedSession() {
-  return state.sessions.find((session) => session.id === state.editingSessionId);
+  return [
+    ...state.sessions,
+    ...state.reportSessions,
+    ...(state.admin?.sessions || []),
+  ].find((session) => session.id === state.editingSessionId);
 }
 
 function openSessionEditor(sessionId) {
-  const session = state.sessions.find((item) => item.id === sessionId);
+  const session = [
+    ...state.sessions,
+    ...state.reportSessions,
+    ...(state.admin?.sessions || []),
+  ].find((item) => item.id === sessionId);
   if (!session) return;
   state.editingSessionId = sessionId;
   document.getElementById("session-task").innerHTML = state.tasks
@@ -566,11 +629,13 @@ function escapeHtml(value) {
 }
 
 document.querySelectorAll(".nav-item").forEach((button) => {
-  button.addEventListener("click", () => {
+  button.addEventListener("click", async () => {
     state.activeView = button.dataset.view;
     syncActiveViewClass();
     document.querySelectorAll(".nav-item").forEach((item) => item.classList.toggle("active", item === button));
     document.querySelectorAll(".view").forEach((view) => view.classList.toggle("active", view.id === `${state.activeView}-view`));
+    if (state.activeView === "reports") await loadReportData();
+    if (state.activeView === "admin") await loadAdminData();
   });
 });
 
@@ -607,11 +672,13 @@ document.getElementById("task-form").addEventListener("submit", async (event) =>
   await api("/api/tasks", { method: "POST", body: JSON.stringify({ name, color }) });
   document.getElementById("task-name").value = "";
   document.getElementById("task-dialog").close();
-  await loadData();
+  await reloadVisibleData();
 });
 
-document.getElementById("refresh-timeline").addEventListener("click", loadData);
-document.getElementById("refresh-admin").addEventListener("click", loadData);
+document.getElementById("refresh-timeline").addEventListener("click", async () => {
+  await loadData();
+});
+document.getElementById("refresh-admin").addEventListener("click", loadAdminData);
 document.getElementById("timeline-date").addEventListener("click", () => {
   const picker = document.getElementById("timeline-date-picker");
   if (typeof picker.showPicker === "function") picker.showPicker();
@@ -636,7 +703,7 @@ document.getElementById("task-edit-form").addEventListener("submit", async (even
     }),
   });
   closeTaskEditor();
-  await loadData();
+  await reloadVisibleData();
 });
 document.getElementById("delete-current-task").addEventListener("click", async () => {
   const task = selectedTask();
@@ -649,7 +716,7 @@ document.getElementById("delete-current-task").addEventListener("click", async (
   if (!confirmed) return;
   await api(`/api/tasks/${task.id}`, { method: "DELETE" });
   closeTaskEditor();
-  await loadData();
+  await reloadVisibleData();
 });
 document.getElementById("archive-current-task").addEventListener("click", async () => {
   const task = selectedTask();
@@ -659,7 +726,7 @@ document.getElementById("archive-current-task").addEventListener("click", async 
     body: JSON.stringify({ archived: !task.archived }),
   });
   closeTaskEditor();
-  await loadData();
+  await reloadVisibleData();
 });
 document.getElementById("cancel-session-edit").addEventListener("click", closeSessionEditor);
 document.getElementById("session-start-date").addEventListener("input", updateSessionDurationPreview);
@@ -686,7 +753,7 @@ document.getElementById("session-form").addEventListener("submit", async (event)
     }),
   });
   closeSessionEditor();
-  await loadData();
+  await reloadVisibleData();
 });
 document.getElementById("delete-session").addEventListener("click", async () => {
   const session = selectedSession();
@@ -699,7 +766,7 @@ document.getElementById("delete-session").addEventListener("click", async () => 
   if (!confirmed) return;
   await api(`/api/sessions/${session.id}`, { method: "DELETE" });
   closeSessionEditor();
-  await loadData();
+  await reloadVisibleData();
 });
 
 loadData();

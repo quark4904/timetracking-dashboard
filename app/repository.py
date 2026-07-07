@@ -274,15 +274,30 @@ def get_session(session_id: int, conn: sqlite3.Connection | None = None) -> dict
             conn.close()
 
 
-def list_sessions() -> list[dict]:
+def list_sessions(start: str | None = None, end: str | None = None) -> list[dict]:
+    start_utc = normalize_to_utc(start)
+    end_utc = normalize_to_utc(end)
+    if (start is None) != (end is None):
+        raise ValueError("start and end must be provided together")
+    if start_utc is not None and end_utc is not None and parse_stored_datetime(start_utc) >= parse_stored_datetime(end_utc):
+        raise ValueError("end must be after start")
+
+    where = ""
+    params: tuple[str, str] | tuple[()] = ()
+    if start_utc is not None and end_utc is not None:
+        where = "WHERE s.ended_at IS NULL OR (s.started_at >= ? AND s.started_at < ?)"
+        params = (start_utc, end_utc)
+
     with connect() as conn:
         rows = conn.execute(
-            """
+            f"""
             SELECT s.*, t.name AS task_name, t.color AS task_color
             FROM sessions s
             JOIN tasks t ON t.id = s.task_id
+            {where}
             ORDER BY s.started_at DESC
-            """
+            """,
+            params,
         ).fetchall()
         return [row_to_dict(row) for row in rows]
 

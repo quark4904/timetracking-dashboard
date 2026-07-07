@@ -28,7 +28,14 @@ class Handler(BaseHTTPRequestHandler):
             include_archived = parse_qs(parsed.query).get("include_archived", ["false"])[0] == "true"
             return self.send_json(repository.list_tasks(include_archived))
         if parsed.path == "/api/sessions":
-            return self.send_json(repository.list_sessions())
+            query = parse_qs(parsed.query)
+            try:
+                return self.send_json(repository.list_sessions(
+                    query.get("start", [None])[0],
+                    query.get("end", [None])[0],
+                ))
+            except ValueError as exc:
+                return self.send_error(400, str(exc))
         if parsed.path == "/api/admin/db":
             return self.send_json(repository.list_admin_db())
         return self.send_error(404)
