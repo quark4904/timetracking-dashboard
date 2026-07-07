@@ -51,6 +51,12 @@ class Handler(BaseHTTPRequestHandler):
         if parsed.path == "/api/tasks":
             payload = self.read_json()
             return self.send_json(repository.create_task(payload["name"], payload["color"]), status=201)
+        if parsed.path == "/api/tasks/reorder":
+            payload = self.read_json()
+            tasks = repository.reorder_tasks([int(task_id) for task_id in payload.get("task_ids", [])])
+            if tasks is None:
+                return self.send_error(404, "Task not found")
+            return self.send_json(tasks)
         if parsed.path.endswith("/start") and parsed.path.startswith("/api/tasks/"):
             task_id = int(parsed.path.split("/")[3])
             session = repository.start_session(task_id)
@@ -90,6 +96,7 @@ class Handler(BaseHTTPRequestHandler):
                 payload.get("name"),
                 payload.get("color"),
                 payload.get("archived"),
+                payload.get("notes"),
             )
             if task is None:
                 return self.send_error(404, "Task not found")
@@ -98,6 +105,13 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_DELETE(self) -> None:
         parsed = urlparse(self.path)
+        if parsed.path.startswith("/api/tasks/"):
+            task_id = int(parsed.path.split("/")[3])
+            if not repository.delete_task(task_id):
+                return self.send_error(404, "Task not found")
+            self.send_response(204)
+            self.end_headers()
+            return
         if parsed.path.startswith("/api/sessions/"):
             session_id = int(parsed.path.split("/")[3])
             if not repository.delete_session(session_id):

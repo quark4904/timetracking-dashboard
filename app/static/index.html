@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Timetracking Dashboard</title>
-    <link rel="stylesheet" href="/static/styles.css?v=20260707-3" />
+    <link rel="stylesheet" href="/static/styles.css?v=20260707-19" />
   </head>
   <body>
     <div class="app-shell">
@@ -46,7 +46,7 @@
             </div>
             <div class="top-actions">
               <button class="icon-button" id="add-task" aria-label="Add task" title="Add task">+</button>
-              <button class="text-button" id="archive-toggle">Archive</button>
+              <button class="text-button" id="task-edit-toggle">Edit</button>
             </div>
           </header>
 
@@ -75,7 +75,8 @@
         <section class="view" id="timeline-view" aria-labelledby="timeline-title">
           <header class="topbar">
             <div>
-              <div class="eyebrow" id="timeline-date"></div>
+              <button class="eyebrow date-button" id="timeline-date" type="button"></button>
+              <input class="date-picker" id="timeline-date-picker" type="date" aria-label="Select timeline date" />
               <h1 id="timeline-title">Timeline</h1>
             </div>
             <button class="icon-button" id="refresh-timeline" aria-label="Refresh timeline" title="Refresh">↻</button>
@@ -206,14 +207,39 @@
           Name
           <input id="task-name" maxlength="80" required autocomplete="off" />
         </label>
-        <label>
-          Color
-          <input id="task-color" type="color" value="#0a84ff" />
-        </label>
+        <section>
+          <div class="color-label">COLOR</div>
+          <div class="task-color-grid compact" id="task-colors"></div>
+        </section>
         <div class="dialog-actions">
-          <button value="cancel" class="text-button">Cancel</button>
-          <button value="default" class="primary-button">Create</button>
+          <button type="button" class="text-button" id="cancel-new-task">Cancel</button>
+          <button type="submit" class="primary-button">Create</button>
         </div>
+      </form>
+    </dialog>
+
+    <dialog id="task-edit-dialog" class="session-dialog">
+      <form method="dialog" class="session-form task-edit-form" id="task-edit-form">
+        <header class="session-form-header">
+          <button type="button" class="text-button" id="cancel-task-edit">Cancel</button>
+          <h2>Edit Task</h2>
+          <button type="submit" class="text-button">Save</button>
+        </header>
+
+        <section class="task-detail-card">
+          <input id="edit-task-name" maxlength="80" required autocomplete="off" aria-label="Task name" />
+          <textarea id="edit-task-notes" rows="2" maxlength="2000" placeholder="Notes" aria-label="Task notes"></textarea>
+        </section>
+
+        <section>
+          <div class="color-label">COLOR</div>
+          <div class="task-color-grid" id="edit-task-colors"></div>
+        </section>
+
+        <section class="task-danger-card">
+          <button type="button" id="delete-current-task">Delete Task</button>
+          <button type="button" id="archive-current-task">Archive Task</button>
+        </section>
       </form>
     </dialog>
 
@@ -228,11 +254,13 @@
         <section class="session-time-card">
           <label>
             <span>From</span>
-            <input id="session-start" type="datetime-local" step="1" required />
+            <input class="session-time-input" id="session-start-time" type="time" step="60" required />
+            <input class="session-date-input" id="session-start-date" type="date" required />
           </label>
           <label>
             <span>To</span>
-            <input id="session-end" type="datetime-local" step="1" />
+            <input class="session-time-input" id="session-end-time" type="time" step="60" />
+            <input class="session-date-input" id="session-end-date" type="date" />
           </label>
           <div class="session-duration-row">
             <span>Duration</span>
@@ -254,6 +282,17 @@
       </form>
     </dialog>
 
-    <script src="/static/app.js?v=20260707-3"></script>
+    <dialog id="confirm-dialog" class="confirm-dialog">
+      <form method="dialog" class="confirm-form">
+        <h2 id="confirm-title">Confirm</h2>
+        <p id="confirm-message"></p>
+        <div class="dialog-actions">
+          <button type="button" class="text-button" id="confirm-cancel">Cancel</button>
+          <button type="button" class="danger-button" id="confirm-accept">Delete</button>
+        </div>
+      </form>
+    </dialog>
+
+    <script src="/static/app.js?v=20260707-19"></script>
   </body>
 </html>

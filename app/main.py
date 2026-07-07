@@ -20,6 +20,11 @@ class TaskUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=80)
     color: str | None = Field(default=None, pattern=r"^#[0-9a-fA-F]{6}$")
     archived: bool | None = None
+    notes: str | None = Field(default=None, max_length=2000)
+
+
+class TaskReorder(BaseModel):
+    task_ids: list[int]
 
 
 class SessionUpdate(BaseModel):
@@ -56,10 +61,30 @@ def create_task(payload: TaskCreate) -> dict:
 
 @app.patch("/api/tasks/{task_id}")
 def update_task(task_id: int, payload: TaskUpdate) -> dict:
-    task = repository.update_task(task_id, payload.name, payload.color, payload.archived)
+    task = repository.update_task(
+        task_id,
+        payload.name,
+        payload.color,
+        payload.archived,
+        payload.notes,
+    )
     if task is None:
         raise HTTPException(status_code=404, detail="Task not found")
     return task
+
+
+@app.post("/api/tasks/reorder")
+def reorder_tasks(payload: TaskReorder) -> list[dict]:
+    tasks = repository.reorder_tasks(payload.task_ids)
+    if tasks is None:
+        raise HTTPException(status_code=404, detail="Task not found")
+    return tasks
+
+
+@app.delete("/api/tasks/{task_id}", status_code=204)
+def delete_task(task_id: int) -> None:
+    if not repository.delete_task(task_id):
+        raise HTTPException(status_code=404, detail="Task not found")
 
 
 @app.post("/api/tasks/{task_id}/start", status_code=201)

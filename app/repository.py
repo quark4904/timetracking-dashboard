@@ -69,6 +69,8 @@ def init_db() -> None:
                 name TEXT NOT NULL,
                 color TEXT NOT NULL DEFAULT '#0a84ff',
                 archived INTEGER NOT NULL DEFAULT 0,
+                notes TEXT NOT NULL DEFAULT '',
+                sort_order INTEGER NOT NULL DEFAULT 0,
                 created_at TEXT NOT NULL
             );
 
@@ -79,6 +81,21 @@ def init_db() -> None:
                 ended_at TEXT,
                 notes TEXT NOT NULL DEFAULT ''
             );
+            """
+        )
+        existing_columns = {row["name"] for row in conn.execute("PRAGMA table_info(tasks)").fetchall()}
+        migrations = {
+            "notes": "ALTER TABLE tasks ADD COLUMN notes TEXT NOT NULL DEFAULT ''",
+            "sort_order": "ALTER TABLE tasks ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0",
+        }
+        for column, statement in migrations.items():
+            if column not in existing_columns:
+                conn.execute(statement)
+        conn.execute(
+            """
+            UPDATE tasks
+            SET sort_order = id
+            WHERE sort_order = 0
             """
         )
 
@@ -104,21 +121,28 @@ def list_tasks(include_archived: bool = False) -> list[dict]:
     where = "" if include_archived else "WHERE t.archived = 0"
     with connect() as conn:
         rows = conn.execute(
-            f"{sql} {where} GROUP BY t.id ORDER BY t.archived, t.created_at"
+            f"{sql} {where} GROUP BY t.id ORDER BY t.archived, t.sort_order, t.created_at"
         ).fetchall()
         return [row_to_dict(row) for row in rows]
 
 
 def create_task(name: str, color: str) -> dict:
     with connect() as conn:
+        next_order = conn.execute("SELECT COALESCE(MAX(sort_order), 0) + 1 FROM tasks").fetchone()[0]
         cursor = conn.execute(
-            "INSERT INTO tasks (name, color, created_at) VALUES (?, ?, ?)",
-            (name.strip(), color, utc_now()),
+            "INSERT INTO tasks (name, color, sort_order, created_at) VALUES (?, ?, ?, ?)",
+            (name.strip(), color, next_order, utc_now()),
         )
         return row_to_dict(conn.execute("SELECT * FROM tasks WHERE id = ?", (cursor.lastrowid,)).fetchone())
 
 
-def update_task(task_id: int, name: str | None, color: str | None, archived: bool | None) -> dict | None:
+def update_task(
+    task_id: int,
+    name: str | None,
+    color: str | None,
+    archived: bool | None,
+    notes: str | None = None,
+) -> dict | None:
     fields = []
     values = []
     if name is not None:
@@ -130,6 +154,9 @@ def update_task(task_id: int, name: str | None, color: str | None, archived: boo
     if archived is not None:
         fields.append("archived = ?")
         values.append(1 if archived else 0)
+    if notes is not None:
+        fields.append("notes = ?")
+        values.append(notes.strip())
     if not fields:
         return get_task(task_id)
     values.append(task_id)
@@ -137,6 +164,28 @@ def update_task(task_id: int, name: str | None, color: str | None, archived: boo
         conn.execute(f"UPDATE tasks SET {', '.join(fields)} WHERE id = ?", values)
         row = conn.execute("SELECT * FROM tasks WHERE id = ?", (task_id,)).fetchone()
         return row_to_dict(row) if row else None
+
+
+def reorder_tasks(task_ids: list[int]) -> list[dict] | None:
+    if not task_ids:
+        return list_tasks(include_archived=True)
+    with connect() as conn:
+        placeholders = ",".join("?" for _ in task_ids)
+        found = conn.execute(
+            f"SELECT COUNT(*) FROM tasks WHERE id IN ({placeholders})",
+            task_ids,
+        ).fetchone()[0]
+        if found != len(set(task_ids)):
+            return None
+        for index, task_id in enumerate(task_ids, start=1):
+            conn.execute("UPDATE tasks SET sort_order = ? WHERE id = ?", (index, task_id))
+    return list_tasks(include_archived=True)
+
+
+def delete_task(task_id: int) -> bool:
+    with connect() as conn:
+        cursor = conn.execute("DELETE FROM tasks WHERE id = ?", (task_id,))
+        return cursor.rowcount > 0
 
 
 def get_task(task_id: int) -> dict | None:

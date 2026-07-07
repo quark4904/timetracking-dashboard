@@ -5,6 +5,11 @@ const state = {
   filter: "active",
   activeView: "tasks",
   editingSessionId: null,
+  isTaskEditing: false,
+  editingTaskId: null,
+  editingTaskColor: "#0a84ff",
+  newTaskColor: "#4da1ff",
+  timelineDate: "2026-07-07",
 };
 
 const fmt = new Intl.DateTimeFormat("en", { month: "long", day: "numeric", year: "numeric" });
@@ -20,29 +25,34 @@ const kstPartsFmt = new Intl.DateTimeFormat("en", {
   hourCycle: "h23",
 });
 const monthNames = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
+const taskColors = [
+  "#bf3ff0", "#ff0a8a", "#ff0a4f", "#ff8a0a", "#ffcc1a", "#00d934", "#24bce3", "#1597ef", "#5956f4",
+  "#bf7af0", "#ff7ac7", "#ff767d", "#c49a63", "#8aef00", "#10e69a", "#28d7d7", "#45d0e8", "#8198ff",
+];
 
 function secondsBetween(start, end) {
   return Math.max(0, Math.floor((new Date(end || Date.now()) - new Date(start)) / 1000));
 }
 
-function formatDuration(seconds, showSeconds = false) {
+function formatDuration(seconds) {
   const safe = Math.max(0, Math.floor(seconds));
   const hours = Math.floor(safe / 3600);
   const minutes = Math.floor((safe % 3600) / 60);
-  const secs = safe % 60;
-  if (showSeconds) return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
   return `${hours}:${String(minutes).padStart(2, "0")}`;
 }
 
-function dateTimeLocalValue(value) {
+function localDateTimeParts(value) {
   if (!value) return "";
   const parts = kstParts(value);
-  return `${parts.year}-${parts.month}-${parts.day}T${String(parts.hour).padStart(2, "0")}:${parts.minute}:${parts.second}`;
+  return {
+    date: `${parts.year}-${parts.month}-${parts.day}`,
+    time: `${String(parts.hour).padStart(2, "0")}:${parts.minute}`,
+  };
 }
 
-function localInputToIso(value) {
-  if (!value) return null;
-  return new Date(`${value}+09:00`).toISOString();
+function localDateTimeToIso(date, time) {
+  if (!date || !time) return null;
+  return new Date(`${date}T${time}:00+09:00`).toISOString();
 }
 
 async function api(path, options = {}) {
@@ -80,14 +90,20 @@ function taskTotal(task) {
 }
 
 function render() {
+  syncActiveViewClass();
   document.getElementById("today-label").textContent = fmt.format(new Date());
-  document.getElementById("timeline-date").textContent = fmt.format(new Date(2026, 6, 7));
+  document.getElementById("timeline-date").textContent = fmt.format(dateFromKey(state.timelineDate));
+  document.getElementById("timeline-date-picker").value = state.timelineDate;
   renderTasks();
   renderLiveSession();
   renderWeekStrip();
   renderTimeline();
   renderReports();
   renderAdmin();
+}
+
+function syncActiveViewClass() {
+  document.body.classList.toggle("timeline-active", state.activeView === "timeline");
 }
 
 function kstParts(value) {
@@ -107,6 +123,15 @@ function kstDateKey(value) {
   return `${parts.year}-${parts.month}-${parts.day}`;
 }
 
+function dateKey(value) {
+  return `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, "0")}-${String(value.getDate()).padStart(2, "0")}`;
+}
+
+function dateFromKey(value) {
+  const [year, month, day] = value.split("-").map(Number);
+  return new Date(year, month - 1, day);
+}
+
 function kstHourFraction(value) {
   const parts = kstParts(value);
   return parts.hour + Number(parts.minute) / 60;
@@ -119,11 +144,32 @@ function kstMonthIndex(value) {
 function renderTasks() {
   const list = document.getElementById("task-list");
   const active = activeSession();
+  const tasksView = document.getElementById("tasks-view");
+  tasksView.classList.toggle("tasks-editing", state.isTaskEditing);
+  document.getElementById("task-edit-toggle").textContent = state.isTaskEditing ? "Done" : "Edit";
   const rows = state.tasks.filter((task) => {
     if (state.filter === "archive") return task.archived;
     if (state.filter === "recent") return !task.archived && task.total_seconds > 0;
     return !task.archived;
   });
+
+  if (state.isTaskEditing) {
+    list.innerHTML = rows.map((task) => {
+      return `
+        <div class="task-row editing" style="--task-color:${task.color}" data-task-id="${task.id}" draggable="true">
+          <div class="task-main">
+            <span class="play"></span>
+            <span class="task-name">${escapeHtml(task.name)}</span>
+          </div>
+          <button class="task-info-button" aria-label="Edit ${escapeHtml(task.name)}">i</button>
+          <button class="task-drag-handle" aria-label="Move ${escapeHtml(task.name)}">☰</button>
+        </div>
+      `;
+    }).join("") || `<div class="muted">No tasks here yet</div>`;
+
+    list.querySelectorAll(".task-row").forEach((row) => bindTaskEditRow(row, rows));
+    return;
+  }
 
   list.innerHTML = rows.map((task) => {
     const isRunning = active?.task_id === task.id;
@@ -147,6 +193,102 @@ function renderTasks() {
   });
 }
 
+function visibleTasks() {
+  return state.tasks.filter((task) => {
+    if (state.filter === "archive") return task.archived;
+    if (state.filter === "recent") return !task.archived && task.total_seconds > 0;
+    return !task.archived;
+  });
+}
+
+function bindTaskEditRow(row) {
+  const taskId = Number(row.dataset.taskId);
+  row.querySelector(".task-info-button").addEventListener("click", () => {
+    openTaskEditor(taskId);
+  });
+  row.addEventListener("dragstart", (event) => {
+    event.dataTransfer.effectAllowed = "move";
+    event.dataTransfer.setData("text/plain", String(taskId));
+  });
+  row.addEventListener("dragover", (event) => {
+    event.preventDefault();
+    row.classList.add("drag-over");
+  });
+  row.addEventListener("dragleave", () => {
+    row.classList.remove("drag-over");
+  });
+  row.addEventListener("drop", async (event) => {
+    event.preventDefault();
+    row.classList.remove("drag-over");
+    const sourceId = Number(event.dataTransfer.getData("text/plain"));
+    if (!sourceId || sourceId === taskId) return;
+    await moveTaskBefore(sourceId, taskId);
+  });
+}
+
+async function moveTaskBefore(sourceId, targetId) {
+  const visibleIds = visibleTasks().map((task) => task.id);
+  const fromIndex = visibleIds.indexOf(sourceId);
+  const toIndex = visibleIds.indexOf(targetId);
+  if (fromIndex === -1 || toIndex === -1) return;
+  visibleIds.splice(fromIndex, 1);
+  visibleIds.splice(toIndex, 0, sourceId);
+  const visibleTaskById = new Map(state.tasks.filter((task) => visibleIds.includes(task.id)).map((task) => [task.id, task]));
+  const reorderedVisibleTasks = visibleIds.map((id) => visibleTaskById.get(id));
+  state.tasks = state.tasks.map((task) => {
+    if (!visibleTaskById.has(task.id)) return task;
+    return reorderedVisibleTasks.shift();
+  });
+  renderTasks();
+  await api("/api/tasks/reorder", {
+    method: "POST",
+    body: JSON.stringify({ task_ids: state.tasks.map((task) => task.id) }),
+  });
+  await loadData();
+}
+
+function openTaskEditor(taskId) {
+  const task = state.tasks.find((item) => item.id === taskId);
+  if (!task) return;
+  state.editingTaskId = taskId;
+  state.editingTaskColor = task.color;
+  document.getElementById("edit-task-name").value = task.name;
+  document.getElementById("edit-task-notes").value = task.notes || "";
+  document.getElementById("archive-current-task").hidden = Boolean(task.archived);
+  renderTaskColorPicker("edit-task-colors", state.editingTaskColor, (color) => {
+    state.editingTaskColor = color;
+  });
+  document.getElementById("task-edit-dialog").showModal();
+}
+
+function closeTaskEditor() {
+  state.editingTaskId = null;
+  document.getElementById("task-edit-dialog").close();
+}
+
+function selectedTask() {
+  return state.tasks.find((task) => task.id === state.editingTaskId);
+}
+
+function renderTaskColorPicker(containerId, selectedColor, onSelect) {
+  const container = document.getElementById(containerId);
+  container.innerHTML = taskColors.map((color) => `
+    <button
+      type="button"
+      class="task-color-swatch ${color.toLowerCase() === selectedColor.toLowerCase() ? "selected" : ""}"
+      style="--swatch:${color}"
+      data-color="${color}"
+      aria-label="Use color ${color}"
+    ></button>
+  `).join("");
+  container.querySelectorAll(".task-color-swatch").forEach((button) => {
+    button.addEventListener("click", () => {
+      onSelect(button.dataset.color);
+      renderTaskColorPicker(containerId, button.dataset.color, onSelect);
+    });
+  });
+}
+
 function renderLiveSession() {
   const live = document.getElementById("live-session");
   const session = activeSession();
@@ -160,41 +302,63 @@ function renderLiveSession() {
       <div class="live-title" style="color:${session.task_color}">${escapeHtml(session.task_name)}</div>
       <div class="muted">Started ${timeFmt.format(new Date(session.started_at))}</div>
     </div>
-    <div class="live-time">${formatDuration(secondsBetween(session.started_at, null), true)}</div>
+    <div class="live-time">${formatDuration(secondsBetween(session.started_at, null))}</div>
   `;
 }
 
 function renderWeekStrip() {
-  const base = new Date(2026, 6, 5);
+  const selectedDate = dateFromKey(state.timelineDate);
+  const base = new Date(selectedDate);
+  base.setDate(selectedDate.getDate() - selectedDate.getDay());
   document.getElementById("week-strip").innerHTML = Array.from({ length: 7 }, (_, index) => {
     const day = new Date(base);
     day.setDate(base.getDate() + index);
+    const key = dateKey(day);
+    const selected = key === state.timelineDate;
     return `
-      <div class="day-pill ${index === 2 ? "active" : ""}">
+      <button class="day-pill ${selected ? "active" : ""}" data-date="${key}" aria-label="Show ${fmt.format(day)}">
         <div><strong>${String(day.getDate()).padStart(2, "0")}</strong><br>${day.toLocaleDateString("en", { weekday: "short" }).toUpperCase()}</div>
-      </div>
+      </button>
     `;
   }).join("");
+  document.querySelectorAll(".day-pill").forEach((button) => {
+    button.addEventListener("click", () => {
+      setTimelineDate(button.dataset.date);
+    });
+  });
+}
+
+function setTimelineDate(value) {
+  state.timelineDate = value;
+  document.getElementById("timeline-date").textContent = fmt.format(dateFromKey(state.timelineDate));
+  document.getElementById("timeline-date-picker").value = state.timelineDate;
+  renderWeekStrip();
+  renderTimeline();
 }
 
 function renderTimeline() {
   const board = document.getElementById("timeline-board");
-  const startHour = 9;
-  const endHour = 22;
+  const previousScrollTop = board.scrollTop;
+  const startHour = 0;
+  const endHour = 24;
   const pxPerHour = 78;
-  const daySessions = state.sessions.filter((session) => kstDateKey(session.started_at) === "2026-07-07");
+  const timelinePadding = 34;
+  const timelineBottomPadding = 118;
+  const timelineHeight = (endHour - startHour) * pxPerHour;
+  const contentHeight = timelineHeight + timelinePadding + timelineBottomPadding;
+  const daySessions = state.sessions.filter((session) => kstDateKey(session.started_at) === state.timelineDate);
   const labels = Array.from({ length: endHour - startHour + 1 }, (_, index) => {
     const hour = startHour + index;
-    const label = hour === 12 ? "Noon" : hour > 12 ? `${hour - 12} PM` : `${hour} AM`;
-    return `<div class="time-label" style="top:${index * pxPerHour}px">${label}</div>`;
+    const label = hour === 0 || hour === 24 ? "12 AM" : hour === 12 ? "Noon" : hour > 12 ? `${hour - 12} PM` : `${hour} AM`;
+    return `<div class="time-label" style="top:${timelinePadding + index * pxPerHour}px">${label}</div>`;
   }).join("");
   const events = daySessions.map((session) => {
     const end = new Date(session.ended_at || Date.now());
     const start = new Date(session.started_at);
     const startLocal = kstHourFraction(session.started_at);
     const durationHours = Math.max(0.35, (end - start) / 3600000);
-    const top = Math.max(0, (startLocal - startHour) * pxPerHour);
-    const height = Math.max(28, durationHours * pxPerHour);
+    const top = timelinePadding + Math.max(0, Math.min(timelineHeight - 28, (startLocal - startHour) * pxPerHour));
+    const height = Math.max(28, Math.min(contentHeight - timelinePadding - top, durationHours * pxPerHour));
     return `
       <button class="timeline-event session-edit-trigger" data-session-id="${session.id}" style="top:${top}px;height:${height}px;--task-color:${session.task_color}">
         ${escapeHtml(session.task_name)} <span>${formatDuration(secondsBetween(session.started_at, session.ended_at))}</span>
@@ -203,10 +367,11 @@ function renderTimeline() {
   }).join("");
   const now = new Date();
   const nowHour = now.getHours() + now.getMinutes() / 60;
-  const nowLine = nowHour >= startHour && nowHour <= endHour
-    ? `<div class="now-line" style="top:${(nowHour - startHour) * pxPerHour}px"></div>`
+  const nowLine = dateKey(now) === state.timelineDate && nowHour >= startHour && nowHour <= endHour
+    ? `<div class="now-line" style="top:${timelinePadding + (nowHour - startHour) * pxPerHour}px"></div>`
     : "";
-  board.innerHTML = labels + events + nowLine;
+  board.innerHTML = `<div class="timeline-content" style="height:${contentHeight}px;--timeline-offset:${timelinePadding}px">${labels + events + nowLine}</div>`;
+  board.scrollTop = previousScrollTop;
   bindSessionEditTriggers(board);
 }
 
@@ -296,7 +461,7 @@ function renderAdmin() {
       <td><code>${escapeHtml(session.started_at)}</code></td>
       <td>${escapeHtml(session.started_at_kst)}</td>
       <td>${escapeHtml(session.ended_at_kst || "Running")}</td>
-      <td>${formatDuration(session.duration_seconds, true)}</td>
+      <td>${formatDuration(session.duration_seconds)}</td>
     </tr>
   `).join("");
   bindSessionEditTriggers(document.getElementById("admin-session-rows"));
@@ -321,8 +486,12 @@ function openSessionEditor(sessionId) {
     .map((task) => `<option value="${task.id}">${escapeHtml(task.name)}</option>`)
     .join("");
   document.getElementById("session-task").value = String(session.task_id);
-  document.getElementById("session-start").value = dateTimeLocalValue(session.started_at);
-  document.getElementById("session-end").value = dateTimeLocalValue(session.ended_at);
+  const start = localDateTimeParts(session.started_at);
+  const end = localDateTimeParts(session.ended_at);
+  document.getElementById("session-start-date").value = start.date;
+  document.getElementById("session-start-time").value = start.time;
+  document.getElementById("session-end-date").value = end.date || "";
+  document.getElementById("session-end-time").value = end.time || "";
   document.getElementById("session-notes").value = session.notes || "";
   updateSessionDurationPreview();
   document.getElementById("session-dialog").showModal();
@@ -334,12 +503,46 @@ function closeSessionEditor() {
 }
 
 function updateSessionDurationPreview() {
-  const start = localInputToIso(document.getElementById("session-start").value);
-  const endValue = document.getElementById("session-end").value;
-  const end = endValue ? localInputToIso(endValue) : null;
+  const start = localDateTimeToIso(
+    document.getElementById("session-start-date").value,
+    document.getElementById("session-start-time").value,
+  );
+  const end = localDateTimeToIso(
+    document.getElementById("session-end-date").value,
+    document.getElementById("session-end-time").value,
+  );
   document.getElementById("session-duration").textContent = start
-    ? formatDuration(secondsBetween(start, end), true)
-    : "00:00:00";
+    ? formatDuration(secondsBetween(start, end))
+    : "0:00";
+}
+
+function confirmAction({ title, message, actionLabel = "Delete" }) {
+  return new Promise((resolve) => {
+    const dialog = document.getElementById("confirm-dialog");
+    const accept = document.getElementById("confirm-accept");
+    const cancel = document.getElementById("confirm-cancel");
+    document.getElementById("confirm-title").textContent = title;
+    document.getElementById("confirm-message").textContent = message;
+    accept.textContent = actionLabel;
+
+    const cleanup = (result) => {
+      accept.removeEventListener("click", onAccept);
+      cancel.removeEventListener("click", onCancel);
+      dialog.removeEventListener("cancel", onCancel);
+      dialog.removeEventListener("close", onClose);
+      if (dialog.open) dialog.close();
+      resolve(result);
+    };
+    const onAccept = () => cleanup(true);
+    const onCancel = () => cleanup(false);
+    const onClose = () => cleanup(false);
+
+    accept.addEventListener("click", onAccept);
+    cancel.addEventListener("click", onCancel);
+    dialog.addEventListener("cancel", onCancel);
+    dialog.addEventListener("close", onClose);
+    dialog.showModal();
+  });
 }
 
 function escapeHtml(value) {
@@ -355,6 +558,7 @@ function escapeHtml(value) {
 document.querySelectorAll(".nav-item").forEach((button) => {
   button.addEventListener("click", () => {
     state.activeView = button.dataset.view;
+    syncActiveViewClass();
     document.querySelectorAll(".nav-item").forEach((item) => item.classList.toggle("active", item === button));
     document.querySelectorAll(".view").forEach((view) => view.classList.toggle("active", view.id === `${state.activeView}-view`));
   });
@@ -368,14 +572,27 @@ document.querySelectorAll(".task-tab").forEach((button) => {
   });
 });
 
+document.getElementById("task-edit-toggle").addEventListener("click", () => {
+  state.isTaskEditing = !state.isTaskEditing;
+  renderTasks();
+});
+
 document.getElementById("add-task").addEventListener("click", () => {
+  state.newTaskColor = taskColors[7];
+  renderTaskColorPicker("task-colors", state.newTaskColor, (color) => {
+    state.newTaskColor = color;
+  });
   document.getElementById("task-dialog").showModal();
+});
+
+document.getElementById("cancel-new-task").addEventListener("click", () => {
+  document.getElementById("task-dialog").close();
 });
 
 document.getElementById("task-form").addEventListener("submit", async (event) => {
   event.preventDefault();
   const name = document.getElementById("task-name").value.trim();
-  const color = document.getElementById("task-color").value;
+  const color = state.newTaskColor;
   if (!name) return;
   await api("/api/tasks", { method: "POST", body: JSON.stringify({ name, color }) });
   document.getElementById("task-name").value = "";
@@ -390,9 +607,60 @@ document.getElementById("stop-session").addEventListener("click", async () => {
 
 document.getElementById("refresh-timeline").addEventListener("click", loadData);
 document.getElementById("refresh-admin").addEventListener("click", loadData);
+document.getElementById("timeline-date").addEventListener("click", () => {
+  const picker = document.getElementById("timeline-date-picker");
+  if (typeof picker.showPicker === "function") picker.showPicker();
+  else picker.focus();
+});
+document.getElementById("timeline-date-picker").addEventListener("change", (event) => {
+  if (event.target.value) setTimelineDate(event.target.value);
+});
+document.getElementById("cancel-task-edit").addEventListener("click", closeTaskEditor);
+document.getElementById("task-edit-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const task = selectedTask();
+  if (!task) return;
+  const name = document.getElementById("edit-task-name").value.trim();
+  if (!name) return;
+  await api(`/api/tasks/${task.id}`, {
+    method: "PATCH",
+    body: JSON.stringify({
+      name,
+      color: state.editingTaskColor,
+      notes: document.getElementById("edit-task-notes").value,
+    }),
+  });
+  closeTaskEditor();
+  await loadData();
+});
+document.getElementById("delete-current-task").addEventListener("click", async () => {
+  const task = selectedTask();
+  if (!task) return;
+  const confirmed = await confirmAction({
+    title: "Delete Task",
+    message: `Delete ${task.name}? Sessions for this task will also be removed.`,
+    actionLabel: "Delete Task",
+  });
+  if (!confirmed) return;
+  await api(`/api/tasks/${task.id}`, { method: "DELETE" });
+  closeTaskEditor();
+  await loadData();
+});
+document.getElementById("archive-current-task").addEventListener("click", async () => {
+  const task = selectedTask();
+  if (!task) return;
+  await api(`/api/tasks/${task.id}`, {
+    method: "PATCH",
+    body: JSON.stringify({ archived: !task.archived }),
+  });
+  closeTaskEditor();
+  await loadData();
+});
 document.getElementById("cancel-session-edit").addEventListener("click", closeSessionEditor);
-document.getElementById("session-start").addEventListener("input", updateSessionDurationPreview);
-document.getElementById("session-end").addEventListener("input", updateSessionDurationPreview);
+document.getElementById("session-start-date").addEventListener("input", updateSessionDurationPreview);
+document.getElementById("session-start-time").addEventListener("input", updateSessionDurationPreview);
+document.getElementById("session-end-date").addEventListener("input", updateSessionDurationPreview);
+document.getElementById("session-end-time").addEventListener("input", updateSessionDurationPreview);
 document.getElementById("session-form").addEventListener("submit", async (event) => {
   event.preventDefault();
   const session = selectedSession();
@@ -401,8 +669,14 @@ document.getElementById("session-form").addEventListener("submit", async (event)
     method: "PATCH",
     body: JSON.stringify({
       task_id: Number(document.getElementById("session-task").value),
-      started_at: localInputToIso(document.getElementById("session-start").value),
-      ended_at: localInputToIso(document.getElementById("session-end").value),
+      started_at: localDateTimeToIso(
+        document.getElementById("session-start-date").value,
+        document.getElementById("session-start-time").value,
+      ),
+      ended_at: localDateTimeToIso(
+        document.getElementById("session-end-date").value,
+        document.getElementById("session-end-time").value,
+      ),
       notes: document.getElementById("session-notes").value,
     }),
   });
@@ -412,7 +686,11 @@ document.getElementById("session-form").addEventListener("submit", async (event)
 document.getElementById("delete-session").addEventListener("click", async () => {
   const session = selectedSession();
   if (!session) return;
-  const confirmed = window.confirm("Delete this session?");
+  const confirmed = await confirmAction({
+    title: "Delete Session",
+    message: "Delete this session? This action cannot be undone.",
+    actionLabel: "Delete Session",
+  });
   if (!confirmed) return;
   await api(`/api/sessions/${session.id}`, { method: "DELETE" });
   closeSessionEditor();
