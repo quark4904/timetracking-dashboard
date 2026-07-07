@@ -81,32 +81,6 @@ def init_db() -> None:
             );
             """
         )
-        count = conn.execute("SELECT COUNT(*) AS count FROM tasks").fetchone()["count"]
-        if count == 0:
-            seed(conn)
-
-
-def seed(conn: sqlite3.Connection) -> None:
-    now = utc_now()
-    conn.execute(
-        "INSERT INTO tasks (name, color, archived, created_at) VALUES (?, ?, 0, ?)",
-        ("Reading", "#ffcc1a", now),
-    )
-    conn.execute(
-        "INSERT INTO tasks (name, color, archived, created_at) VALUES (?, ?, 0, ?)",
-        ("Mathematics", "#ff0a4f", now),
-    )
-    reading_id = conn.execute("SELECT id FROM tasks WHERE name = 'Reading'").fetchone()["id"]
-    math_id = conn.execute("SELECT id FROM tasks WHERE name = 'Mathematics'").fetchone()["id"]
-    sessions = [
-        (reading_id, "2026-07-07T05:09:00+00:00", "2026-07-07T05:44:00+00:00", ""),
-        (math_id, "2026-07-07T06:31:00+00:00", "2026-07-07T06:51:00+00:00", ""),
-        (math_id, "2026-07-07T08:49:00+00:00", "2026-07-07T09:41:00+00:00", ""),
-    ]
-    conn.executemany(
-        "INSERT INTO sessions (task_id, started_at, ended_at, notes) VALUES (?, ?, ?, ?)",
-        sessions,
-    )
 
 
 def row_to_dict(row: sqlite3.Row) -> dict:
