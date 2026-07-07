@@ -337,7 +337,6 @@ body.timeline-active #timeline-view .timeline-board {
   color: var(--text);
 }
 
-.dashboard-grid,
 .report-grid {
   display: grid;
   grid-template-columns: minmax(320px, 1.2fr) minmax(280px, 0.8fr);
@@ -347,6 +346,10 @@ body.timeline-active #timeline-view .timeline-board {
 
 .panel {
   background: transparent;
+}
+
+.task-panel {
+  max-width: 920px;
 }
 
 .task-list,
@@ -372,21 +375,46 @@ body.timeline-active #timeline-view .timeline-board {
   padding: 0 18px;
   text-align: left;
   box-shadow: var(--shadow-sm);
-  transition: transform 160ms ease, border-color 160ms ease, background 160ms ease;
+  position: relative;
+  overflow: hidden;
+  transition: transform 160ms ease, border-color 160ms ease, background 160ms ease, box-shadow 160ms ease;
+}
+
+.task-row::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 4px;
+  background: var(--task-color);
+  opacity: 0.75;
 }
 
 .task-row:hover,
-.session-row:hover,
 .breakdown-row:hover {
   transform: translateY(-1px);
   border-color: color-mix(in srgb, var(--task-color, var(--blue)), var(--line) 55%);
   background: color-mix(in srgb, var(--surface), white 4%);
 }
 
+.session-row:hover {
+  border-color: color-mix(in srgb, var(--task-color, var(--blue)), var(--line) 55%);
+  background: color-mix(in srgb, var(--surface), white 4%);
+}
+
 .task-row.running {
   border-color: color-mix(in srgb, var(--task-color), white 18%);
-  background: color-mix(in srgb, var(--task-color), var(--surface) 78%);
+  background:
+    linear-gradient(90deg, color-mix(in srgb, var(--task-color), transparent 76%), transparent 62%),
+    color-mix(in srgb, var(--task-color), var(--surface) 82%);
   color: var(--text);
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--task-color), transparent 70%),
+    0 14px 34px color-mix(in srgb, var(--task-color), transparent 88%);
+}
+
+.task-row.running::before {
+  width: 8px;
+  opacity: 1;
 }
 
 .task-row.editing {
@@ -396,6 +424,10 @@ body.timeline-active #timeline-view .timeline-board {
   padding: 0;
   gap: 14px;
   box-shadow: none;
+}
+
+.task-row.editing::before {
+  display: none;
 }
 
 .task-row.editing .task-main {
@@ -448,14 +480,6 @@ body.timeline-active #timeline-view .timeline-board {
   display: inline-flex;
 }
 
-.tasks-editing .live-panel {
-  display: none;
-}
-
-.tasks-editing .dashboard-grid {
-  grid-template-columns: minmax(320px, 1fr);
-}
-
 .task-run-icon {
   width: 42px;
   height: 42px;
@@ -468,7 +492,14 @@ body.timeline-active #timeline-view .timeline-board {
 
 .task-row.running .task-run-icon {
   color: var(--text);
-  background: rgba(255, 255, 255, 0.14);
+  background: color-mix(in srgb, var(--task-color), white 8%);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--task-color), white 20%);
+}
+
+.task-copy {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
 }
 
 .task-name {
@@ -480,14 +511,27 @@ body.timeline-active #timeline-view .timeline-board {
   font-weight: 800;
 }
 
+.task-started {
+  color: color-mix(in srgb, var(--task-color), white 56%);
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.1;
+  text-transform: uppercase;
+}
+
 .task-time {
+  min-width: 4ch;
   font-size: 18px;
   font-weight: 800;
   color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
 }
 
 .running .task-time {
-  color: color-mix(in srgb, var(--task-color), white 38%);
+  min-width: 7ch;
+  font-size: 23px;
+  color: color-mix(in srgb, var(--task-color), white 48%);
 }
 
 .panel-heading {
@@ -499,29 +543,6 @@ body.timeline-active #timeline-view .timeline-board {
   font-size: 12px;
   font-weight: 850;
   text-transform: uppercase;
-}
-
-.live-session {
-  min-height: 164px;
-  border-radius: var(--radius);
-  background: var(--surface-2);
-  border: 1px solid var(--line-soft);
-  padding: 20px;
-  display: grid;
-  align-content: center;
-  gap: 10px;
-  box-shadow: var(--shadow-sm);
-}
-
-.live-title {
-  font-size: 25px;
-  font-weight: 850;
-}
-
-.live-time {
-  font-size: clamp(44px, 8vw, 76px);
-  line-height: 1;
-  font-weight: 900;
 }
 
 .week-strip,
@@ -1300,7 +1321,6 @@ dialog::backdrop {
     padding: 0 8px;
   }
 
-  .dashboard-grid,
   .report-grid {
     grid-template-columns: 1fr;
   }
@@ -1328,33 +1348,6 @@ dialog::backdrop {
 
   .task-color-grid {
     grid-template-columns: repeat(5, 1fr);
-  }
-
-  .live-panel {
-    position: fixed;
-    left: 0;
-    right: 0;
-    bottom: 76px;
-    z-index: 4;
-    background: rgba(13, 15, 18, 0.96);
-    border-top: 1px solid var(--line-soft);
-    backdrop-filter: blur(18px);
-  }
-
-  .live-panel .panel-heading {
-    display: none;
-  }
-
-  .live-session {
-    min-height: 82px;
-    border: 0;
-    border-radius: 0;
-    grid-template-columns: minmax(0, 1fr) auto;
-    align-items: center;
-  }
-
-  .live-time {
-    font-size: 30px;
   }
 
   .week-strip {

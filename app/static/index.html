@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Timetracking Dashboard</title>
-    <link rel="stylesheet" href="/static/styles.css?v=20260707-20" />
+    <link rel="stylesheet" href="/static/styles.css?v=20260707-23" />
   </head>
   <body>
     <div class="app-shell">
@@ -88,20 +88,9 @@
             <button class="task-tab" data-filter="archive">Archive</button>
           </div>
 
-          <div class="dashboard-grid">
-            <section class="panel task-panel">
-              <div class="task-list" id="task-list"></div>
-            </section>
-            <section class="panel live-panel">
-              <div class="panel-heading">
-                <span>Current Session</span>
-                <button class="small-button" id="stop-session">Stop</button>
-              </div>
-              <div class="live-session" id="live-session">
-                <span class="muted">No task is running</span>
-              </div>
-            </section>
-          </div>
+          <section class="panel task-panel">
+            <div class="task-list" id="task-list"></div>
+          </section>
         </section>
 
         <section class="view" id="timeline-view" aria-labelledby="timeline-title">
@@ -339,6 +328,6 @@
       </form>
     </dialog>
 
-    <script src="/static/app.js?v=20260707-20"></script>
+    <script src="/static/app.js?v=20260707-23"></script>
   </body>
 </html>

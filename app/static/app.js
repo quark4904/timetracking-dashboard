@@ -48,6 +48,14 @@ function formatDuration(seconds) {
   return `${hours}:${String(minutes).padStart(2, "0")}`;
 }
 
+function formatLiveDuration(seconds) {
+  const safe = Math.max(0, Math.floor(seconds));
+  const hours = Math.floor(safe / 3600);
+  const minutes = Math.floor((safe % 3600) / 60);
+  const secs = safe % 60;
+  return `${hours}:${String(minutes).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
+}
+
 function localDateTimeParts(value) {
   if (!value) return "";
   const parts = kstParts(value);
@@ -102,7 +110,6 @@ function render() {
   document.getElementById("timeline-date").textContent = fmt.format(dateFromKey(state.timelineDate));
   document.getElementById("timeline-date-picker").value = state.timelineDate;
   renderTasks();
-  renderLiveSession();
   renderWeekStrip();
   renderTimeline();
   renderReports();
@@ -111,6 +118,14 @@ function render() {
 
 function syncActiveViewClass() {
   document.body.classList.toggle("timeline-active", state.activeView === "timeline");
+}
+
+function updateLiveTimers() {
+  const active = activeSession();
+  if (!active) return;
+  const runningRow = document.querySelector(`.task-row.running[data-task-id="${active.task_id}"]`);
+  const time = runningRow?.querySelector(".task-time");
+  if (time) time.textContent = formatLiveDuration(secondsBetween(active.started_at, null));
 }
 
 function kstParts(value) {
@@ -181,11 +196,16 @@ function renderTasks() {
   list.innerHTML = rows.map((task) => {
     const isRunning = active?.task_id === task.id;
     const icon = isRunning ? "pause" : "play";
+    const timeLabel = isRunning ? formatLiveDuration(secondsBetween(active.started_at, null)) : formatDuration(taskTotal(task));
+    const startedLabel = isRunning ? `<span class="task-started">Started ${timeFmt.format(new Date(active.started_at))}</span>` : "";
     return `
       <button class="task-row ${isRunning ? "running" : ""}" style="--task-color:${task.color}" data-task-id="${task.id}">
         <span class="task-run-icon">${icons[icon]}</span>
-        <span class="task-name">${escapeHtml(task.name)}</span>
-        <span class="task-time">${formatDuration(taskTotal(task), isRunning)}</span>
+        <span class="task-copy">
+          <span class="task-name">${escapeHtml(task.name)}</span>
+          ${startedLabel}
+        </span>
+        <span class="task-time">${timeLabel}</span>
       </button>
     `;
   }).join("") || `<div class="muted">No tasks here yet</div>`;
@@ -294,23 +314,6 @@ function renderTaskColorPicker(containerId, selectedColor, onSelect) {
       renderTaskColorPicker(containerId, button.dataset.color, onSelect);
     });
   });
-}
-
-function renderLiveSession() {
-  const live = document.getElementById("live-session");
-  const session = activeSession();
-  if (!session) {
-    live.innerHTML = `<span class="muted">No task is running</span>`;
-    return;
-  }
-  live.style.borderColor = session.task_color;
-  live.innerHTML = `
-    <div>
-      <div class="live-title" style="color:${session.task_color}">${escapeHtml(session.task_name)}</div>
-      <div class="muted">Started ${timeFmt.format(new Date(session.started_at))}</div>
-    </div>
-    <div class="live-time">${formatDuration(secondsBetween(session.started_at, null))}</div>
-  `;
 }
 
 function renderWeekStrip() {
@@ -607,11 +610,6 @@ document.getElementById("task-form").addEventListener("submit", async (event) =>
   await loadData();
 });
 
-document.getElementById("stop-session").addEventListener("click", async () => {
-  await api("/api/sessions/stop", { method: "POST" }).catch(() => null);
-  await loadData();
-});
-
 document.getElementById("refresh-timeline").addEventListener("click", loadData);
 document.getElementById("refresh-admin").addEventListener("click", loadData);
 document.getElementById("timeline-date").addEventListener("click", () => {
@@ -705,4 +703,4 @@ document.getElementById("delete-session").addEventListener("click", async () => 
 });
 
 loadData();
-setInterval(render, 1000);
+setInterval(updateLiveTimers, 1000);
