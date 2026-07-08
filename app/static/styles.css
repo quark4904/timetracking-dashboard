@@ -76,6 +76,22 @@ textarea:focus-visible {
   gap: 16px;
 }
 
+@media (min-width: 821px) {
+  .app-shell {
+    display: block;
+    padding-left: 172px;
+  }
+
+  .sidebar {
+    position: fixed;
+    inset: 0 auto 0 0;
+    z-index: 20;
+    width: 172px;
+    height: 100dvh;
+    overflow: hidden;
+  }
+}
+
 .brand {
   display: flex;
   align-items: center;
