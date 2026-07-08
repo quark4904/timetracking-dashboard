@@ -148,7 +148,7 @@ async function loadAdminData() {
 async function reloadVisibleData() {
   await loadData();
   if (state.activeView === "reports") await loadReportData(true);
-  if (state.activeView === "admin") await loadAdminData();
+  if (state.activeView === "settings") await loadAdminData();
 }
 
 function activeSession() {
@@ -430,14 +430,20 @@ function renderTaskColorPicker(containerId, selectedColor, onSelect) {
 function renderWeekStrip() {
   const selectedDate = dateFromKey(state.timelineDate);
   const base = new Date(selectedDate);
+  const todayKey = dateKey(new Date());
   base.setDate(selectedDate.getDate() - selectedDate.getDay());
   document.getElementById("week-strip").innerHTML = Array.from({ length: 7 }, (_, index) => {
     const day = new Date(base);
     day.setDate(base.getDate() + index);
     const key = dateKey(day);
     const selected = key === state.timelineDate;
+    const isToday = key === todayKey;
     return `
-      <button class="day-pill ${selected ? "active" : ""}" data-date="${key}" aria-label="Show ${fmt.format(day)}">
+      <button
+        class="day-pill ${selected ? "active" : ""} ${isToday ? "today" : ""}"
+        data-date="${key}"
+        aria-label="Show ${fmt.format(day)}${isToday ? " (today)" : ""}"
+      >
         <div><strong>${String(day.getDate()).padStart(2, "0")}</strong><br>${day.toLocaleDateString("en", { weekday: "short" }).toUpperCase()}</div>
       </button>
     `;
@@ -564,7 +570,7 @@ function renderAdmin() {
     <div class="setting-row">
       <div>
         <strong>Display timezone</strong>
-        <span>Admin display columns convert timestamps for Korea.</span>
+        <span>Database display columns convert timestamps for Korea.</span>
       </div>
       <code>${escapeHtml(state.admin.display_timezone)}</code>
     </div>
@@ -576,17 +582,6 @@ function renderAdmin() {
       <code>${escapeHtml(state.admin.db_path)}</code>
     </div>
   `;
-  document.getElementById("admin-session-rows").innerHTML = state.admin.sessions.map((session) => `
-    <tr class="admin-session-row session-edit-trigger" data-session-id="${session.id}">
-      <td>${session.id}</td>
-      <td><span class="admin-task-dot" style="--task-color:${session.task_color}"></span>${escapeHtml(session.task_name)}</td>
-      <td><code>${escapeHtml(session.started_at)}</code></td>
-      <td>${escapeHtml(session.started_at_kst)}</td>
-      <td>${escapeHtml(session.ended_at_kst || "Running")}</td>
-      <td>${formatDuration(session.duration_seconds)}</td>
-    </tr>
-  `).join("");
-  bindSessionEditTriggers(document.getElementById("admin-session-rows"));
 }
 
 function bindSessionEditTriggers(root) {
@@ -691,7 +686,7 @@ async function showView(viewName) {
   document.querySelectorAll(".nav-item").forEach((item) => item.classList.toggle("active", item.dataset.view === viewName));
   document.querySelectorAll(".view").forEach((view) => view.classList.toggle("active", view.id === `${viewName}-view`));
   if (viewName === "reports") await loadReportData();
-  if (viewName === "admin") await loadAdminData();
+  if (viewName === "settings") await loadAdminData();
 }
 
 document.querySelectorAll(".nav-item").forEach((button) => {

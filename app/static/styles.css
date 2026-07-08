@@ -786,6 +786,7 @@ body.timeline-active #timeline-view .timeline-board {
 }
 
 .day-pill {
+  position: relative;
   flex: 1;
   min-width: 58px;
   min-height: 66px;
@@ -811,10 +812,37 @@ body.timeline-active #timeline-view .timeline-board {
   font-size: 24px;
 }
 
+.day-pill.today {
+  border-color: color-mix(in srgb, var(--accent), transparent 50%);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent), transparent 70%);
+}
+
+.day-pill.today::after {
+  content: "";
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+
+.day-pill.today strong {
+  color: color-mix(in srgb, var(--accent), white 18%);
+}
+
 .day-pill.active {
   border-color: color-mix(in srgb, var(--blue), transparent 45%);
   background: color-mix(in srgb, var(--blue), transparent 86%);
   color: color-mix(in srgb, var(--blue), white 45%);
+}
+
+.day-pill.active.today {
+  border-color: color-mix(in srgb, var(--accent), transparent 35%);
+  background:
+    linear-gradient(color-mix(in srgb, var(--accent), transparent 88%), color-mix(in srgb, var(--accent), transparent 88%)),
+    color-mix(in srgb, var(--blue), transparent 86%);
 }
 
 .timeline-board {
@@ -1060,6 +1088,11 @@ body.timeline-active #timeline-view .timeline-board {
   box-shadow: var(--shadow-sm);
 }
 
+.settings-stack {
+  display: grid;
+  gap: 22px;
+}
+
 .admin-summary {
   display: grid;
   gap: 1px;
@@ -1067,58 +1100,7 @@ body.timeline-active #timeline-view .timeline-board {
   border: 1px solid var(--line-soft);
   border-radius: var(--radius);
   overflow: hidden;
-  margin-bottom: 22px;
   box-shadow: var(--shadow-sm);
-}
-
-.admin-panel {
-  overflow: hidden;
-}
-
-.admin-table-wrap {
-  overflow-x: auto;
-  border: 1px solid var(--line-soft);
-  border-radius: var(--radius);
-  box-shadow: var(--shadow-sm);
-}
-
-.admin-table {
-  width: 100%;
-  min-width: 920px;
-  border-collapse: collapse;
-  background: var(--surface);
-}
-
-.admin-table th,
-.admin-table td {
-  padding: 14px 16px;
-  border-bottom: 1px solid var(--line-soft);
-  text-align: left;
-  vertical-align: middle;
-}
-
-.admin-table th {
-  color: var(--muted);
-  font-size: 13px;
-  font-weight: 850;
-  text-transform: uppercase;
-}
-
-.admin-table td {
-  font-weight: 700;
-}
-
-.admin-table tr:last-child td {
-  border-bottom: 0;
-}
-
-.admin-task-dot {
-  width: 10px;
-  height: 10px;
-  display: inline-block;
-  border-radius: 50%;
-  background: var(--task-color);
-  margin-right: 8px;
 }
 
 .setting-row {
@@ -1435,14 +1417,6 @@ dialog::backdrop {
 
 .task-danger-card button:last-child {
   border-bottom: 0;
-}
-
-.admin-session-row {
-  cursor: pointer;
-}
-
-.admin-session-row:hover td {
-  background: color-mix(in srgb, var(--surface), white 4%);
 }
 
 .dialog-actions {

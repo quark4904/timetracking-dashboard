@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Timetracking Dashboard</title>
-    <link rel="stylesheet" href="/static/styles.css?v=20260708-3" />
+    <link rel="stylesheet" href="/static/styles.css?v=20260708-5" />
   </head>
   <body>
     <div class="app-shell">
@@ -52,14 +52,6 @@
               <path d="M19.4 15a1.8 1.8 0 0 0 .36 1.98l.06.06a2.1 2.1 0 1 1-2.97 2.97l-.06-.06a1.8 1.8 0 0 0-1.98-.36 1.8 1.8 0 0 0-1.1 1.66v.17a2.1 2.1 0 0 1-4.2 0v-.09A1.8 1.8 0 0 0 8.4 19.6a1.8 1.8 0 0 0-1.98.36l-.06.06a2.1 2.1 0 1 1-2.97-2.97l.06-.06A1.8 1.8 0 0 0 3.8 15a1.8 1.8 0 0 0-1.66-1.1H2a2.1 2.1 0 0 1 0-4.2h.09A1.8 1.8 0 0 0 3.8 8.6a1.8 1.8 0 0 0-.36-1.98l-.06-.06a2.1 2.1 0 1 1 2.97-2.97l.06.06A1.8 1.8 0 0 0 8.4 4a1.8 1.8 0 0 0 1.1-1.66V2.1a2.1 2.1 0 0 1 4.2 0v.24A1.8 1.8 0 0 0 14.8 4a1.8 1.8 0 0 0 1.98-.36l.06-.06a2.1 2.1 0 1 1 2.97 2.97l-.06.06A1.8 1.8 0 0 0 19.4 8.6a1.8 1.8 0 0 0 1.66 1.1h.17a2.1 2.1 0 0 1 0 4.2h-.17A1.8 1.8 0 0 0 19.4 15Z" />
             </svg>
             <span>Settings</span>
-          </button>
-          <button class="nav-item" data-view="admin" aria-label="Admin">
-            <svg class="icon" aria-hidden="true" viewBox="0 0 24 24">
-              <ellipse cx="12" cy="5" rx="8" ry="3" />
-              <path d="M4 5v6c0 1.66 3.58 3 8 3s8-1.34 8-3V5" />
-              <path d="M4 11v6c0 1.66 3.58 3 8 3s8-1.34 8-3v-6" />
-            </svg>
-            <span>Admin</span>
           </button>
         </nav>
       </aside>
@@ -176,42 +168,10 @@
         <section class="view" id="settings-view" aria-labelledby="settings-title">
           <header class="topbar">
             <div>
-              <div class="eyebrow">Server</div>
+              <div class="eyebrow">System</div>
               <h1 id="settings-title">Settings</h1>
             </div>
-          </header>
-          <section class="panel settings-panel">
-            <div class="setting-row">
-              <div>
-                <strong>Docker port</strong>
-                <span>Host 8010 maps to container 8080.</span>
-              </div>
-              <code>http://localhost:8010</code>
-            </div>
-            <div class="setting-row">
-              <div>
-                <strong>Cloudflare Tunnel origin</strong>
-                <span>Point the tunnel service to the host port.</span>
-              </div>
-              <code>http://localhost:8010</code>
-            </div>
-            <div class="setting-row">
-              <div>
-                <strong>Storage</strong>
-                <span>SQLite database persisted through the Docker volume mount.</span>
-              </div>
-              <code>/app/data/timetracking.db</code>
-            </div>
-          </section>
-        </section>
-
-        <section class="view" id="admin-view" aria-labelledby="admin-title">
-          <header class="topbar">
-            <div>
-              <div class="eyebrow">Database viewer</div>
-              <h1 id="admin-title">Admin</h1>
-            </div>
-            <button class="icon-button" id="refresh-admin" aria-label="Refresh admin data" title="Refresh">
+            <button class="icon-button" id="refresh-admin" aria-label="Refresh settings data" title="Refresh">
               <svg class="button-icon" aria-hidden="true" viewBox="0 0 24 24">
                 <path d="M20 6v5h-5" />
                 <path d="M4 18v-5h5" />
@@ -220,27 +180,32 @@
               </svg>
             </button>
           </header>
-          <section class="panel admin-summary" id="admin-summary"></section>
-          <section class="panel admin-panel">
-            <div class="panel-heading">
-              <span>Sessions</span>
-            </div>
-            <div class="admin-table-wrap">
-              <table class="admin-table">
-                <thead>
-                  <tr>
-                    <th>ID</th>
-                    <th>Task</th>
-                    <th>Started UTC</th>
-                    <th>Started KST</th>
-                    <th>Ended KST</th>
-                    <th>Duration</th>
-                  </tr>
-                </thead>
-                <tbody id="admin-session-rows"></tbody>
-              </table>
-            </div>
-          </section>
+          <div class="settings-stack">
+            <section class="panel settings-panel">
+              <div class="setting-row">
+                <div>
+                  <strong>Docker port</strong>
+                  <span>Host 8010 maps to container 8080.</span>
+                </div>
+                <code>http://localhost:8010</code>
+              </div>
+              <div class="setting-row">
+                <div>
+                  <strong>Cloudflare Tunnel origin</strong>
+                  <span>Point the tunnel service to the host port.</span>
+                </div>
+                <code>http://localhost:8010</code>
+              </div>
+              <div class="setting-row">
+                <div>
+                  <strong>Storage</strong>
+                  <span>SQLite database persisted through the Docker volume mount.</span>
+                </div>
+                <code>/app/data/timetracking.db</code>
+              </div>
+            </section>
+            <section class="panel admin-summary" id="admin-summary"></section>
+          </div>
         </section>
       </main>
     </div>
@@ -338,6 +303,6 @@
       </form>
     </dialog>
 
-    <script src="/static/app.js?v=20260708-4"></script>
+    <script src="/static/app.js?v=20260708-5"></script>
   </body>
 </html>
