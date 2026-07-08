@@ -277,6 +277,12 @@ body.timeline-active #timeline-view .timeline-board {
   gap: 12px;
 }
 
+.topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
 .icon-button,
 .text-button,
 .primary-button,

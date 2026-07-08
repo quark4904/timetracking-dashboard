@@ -207,6 +207,32 @@ def start_session(task_id: int) -> dict | None:
         return get_session(cursor.lastrowid, conn)
 
 
+def create_session(
+    task_id: int,
+    started_at: str,
+    ended_at: str | None,
+    notes: str,
+) -> dict | None:
+    started_utc = normalize_to_utc(started_at)
+    ended_utc = normalize_to_utc(ended_at)
+    if started_utc is None:
+        raise ValueError("started_at is required")
+    if ended_utc is not None and duration_seconds(started_utc, ended_utc) <= 0:
+        raise ValueError("ended_at must be after started_at")
+    with connect() as conn:
+        task = conn.execute("SELECT id FROM tasks WHERE id = ?", (task_id,)).fetchone()
+        if not task:
+            return None
+        cursor = conn.execute(
+            """
+            INSERT INTO sessions (task_id, started_at, ended_at, notes)
+            VALUES (?, ?, ?, ?)
+            """,
+            (task_id, started_utc, ended_utc, notes.strip()),
+        )
+        return get_session(cursor.lastrowid, conn)
+
+
 def stop_active_session() -> dict | None:
     with connect() as conn:
         row = conn.execute("SELECT * FROM sessions WHERE ended_at IS NULL LIMIT 1").fetchone()

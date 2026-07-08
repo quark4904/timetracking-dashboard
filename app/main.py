@@ -96,6 +96,22 @@ def start_session(task_id: int) -> dict:
     return session
 
 
+@app.post("/api/sessions", status_code=201)
+def create_session(payload: SessionUpdate) -> dict:
+    try:
+        session = repository.create_session(
+            payload.task_id,
+            payload.started_at,
+            payload.ended_at,
+            payload.notes,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if session is None:
+        raise HTTPException(status_code=404, detail="Task not found")
+    return session
+
+
 @app.post("/api/sessions/stop")
 def stop_session() -> dict:
     session = repository.stop_active_session()

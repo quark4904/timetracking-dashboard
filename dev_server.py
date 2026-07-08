@@ -64,6 +64,20 @@ class Handler(BaseHTTPRequestHandler):
             if tasks is None:
                 return self.send_error(404, "Task not found")
             return self.send_json(tasks)
+        if parsed.path == "/api/sessions":
+            payload = self.read_json()
+            try:
+                session = repository.create_session(
+                    int(payload["task_id"]),
+                    payload["started_at"],
+                    payload.get("ended_at"),
+                    payload.get("notes", ""),
+                )
+            except ValueError as exc:
+                return self.send_error(400, str(exc))
+            if session is None:
+                return self.send_error(404, "Task not found")
+            return self.send_json(session, status=201)
         if parsed.path.endswith("/start") and parsed.path.startswith("/api/tasks/"):
             task_id = int(parsed.path.split("/")[3])
             session = repository.start_session(task_id)

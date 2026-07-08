@@ -10,6 +10,7 @@ const state = {
   filter: "active",
   activeView: "tasks",
   editingSessionId: null,
+  isCreatingSession: false,
   isTaskEditing: false,
   editingTaskId: null,
   editingTaskColor: "#0a84ff",
@@ -216,6 +217,10 @@ function dateKey(value) {
 function dateFromKey(value) {
   const [year, month, day] = value.split("-").map(Number);
   return new Date(year, month - 1, day);
+}
+
+function timeKey(value) {
+  return `${String(value.getHours()).padStart(2, "0")}:${String(value.getMinutes()).padStart(2, "0")}`;
 }
 
 function kstHourFraction(value) {
@@ -866,6 +871,7 @@ function bindSessionEditTriggers(root) {
 }
 
 function selectedSession() {
+  if (state.isCreatingSession) return null;
   return [
     ...state.sessions,
     ...state.reportSessions,
@@ -928,8 +934,40 @@ function renderSessionTaskPicker(session) {
 function setSessionTask(taskId) {
   document.getElementById("session-task").value = String(taskId);
   const session = selectedSession();
-  if (session) renderSessionTaskPicker({ ...session, task_id: Number(taskId) });
+  renderSessionTaskPicker({ ...(session || {}), task_id: Number(taskId) });
   closeSessionTaskMenu();
+}
+
+function setSessionDialogMode(mode) {
+  const isCreating = mode === "create";
+  state.isCreatingSession = isCreating;
+  document.getElementById("session-dialog-title").textContent = isCreating ? "New Session" : "Edit Session";
+  document.getElementById("save-session").textContent = isCreating ? "Create" : "Save";
+  document.getElementById("delete-session").hidden = isCreating;
+}
+
+function openSessionCreator() {
+  const task = state.tasks.find((item) => !item.archived) || state.tasks[0];
+  if (!task) return;
+  const start = dateFromKey(state.timelineDate);
+  const now = new Date();
+  if (dateKey(now) === state.timelineDate) {
+    start.setHours(now.getHours(), now.getMinutes(), 0, 0);
+  } else {
+    start.setHours(9, 0, 0, 0);
+  }
+  const end = new Date(start);
+  end.setHours(end.getHours() + 1);
+  state.editingSessionId = null;
+  setSessionDialogMode("create");
+  renderSessionTaskPicker({ task_id: task.id });
+  document.getElementById("session-start-date").value = dateKey(start);
+  document.getElementById("session-start-time").value = timeKey(start);
+  document.getElementById("session-end-date").value = dateKey(end);
+  document.getElementById("session-end-time").value = timeKey(end);
+  document.getElementById("session-notes").value = "";
+  updateSessionDurationPreview();
+  document.getElementById("session-dialog").showModal();
 }
 
 function openSessionEditor(sessionId) {
@@ -940,6 +978,7 @@ function openSessionEditor(sessionId) {
   ].find((item) => item.id === sessionId);
   if (!session) return;
   state.editingSessionId = sessionId;
+  setSessionDialogMode("edit");
   renderSessionTaskPicker(session);
   const start = localDateTimeParts(session.started_at);
   const end = localDateTimeParts(session.ended_at);
@@ -954,6 +993,7 @@ function openSessionEditor(sessionId) {
 
 function closeSessionEditor() {
   state.editingSessionId = null;
+  state.isCreatingSession = false;
   closeSessionTaskMenu();
   document.getElementById("session-dialog").close();
 }
@@ -1065,6 +1105,7 @@ document.getElementById("task-form").addEventListener("submit", async (event) =>
 document.getElementById("timeline-reports").addEventListener("click", () => {
   showView("reports");
 });
+document.getElementById("timeline-add-session").addEventListener("click", openSessionCreator);
 document.getElementById("bar-chart").addEventListener("pointermove", (event) => {
   const segment = event.target.closest(".bar-segment");
   if (!segment) {
@@ -1181,21 +1222,22 @@ document.getElementById("session-end-time").addEventListener("input", updateSess
 document.getElementById("session-form").addEventListener("submit", async (event) => {
   event.preventDefault();
   const session = selectedSession();
-  if (!session) return;
-  await api(`/api/sessions/${session.id}`, {
-    method: "PATCH",
-    body: JSON.stringify({
-      task_id: Number(document.getElementById("session-task").value),
-      started_at: localDateTimeToIso(
-        document.getElementById("session-start-date").value,
-        document.getElementById("session-start-time").value,
-      ),
-      ended_at: localDateTimeToIso(
-        document.getElementById("session-end-date").value,
-        document.getElementById("session-end-time").value,
-      ),
-      notes: document.getElementById("session-notes").value,
-    }),
+  if (!state.isCreatingSession && !session) return;
+  const payload = {
+    task_id: Number(document.getElementById("session-task").value),
+    started_at: localDateTimeToIso(
+      document.getElementById("session-start-date").value,
+      document.getElementById("session-start-time").value,
+    ),
+    ended_at: localDateTimeToIso(
+      document.getElementById("session-end-date").value,
+      document.getElementById("session-end-time").value,
+    ),
+    notes: document.getElementById("session-notes").value,
+  };
+  await api(state.isCreatingSession ? "/api/sessions" : `/api/sessions/${session.id}`, {
+    method: state.isCreatingSession ? "POST" : "PATCH",
+    body: JSON.stringify(payload),
   });
   closeSessionEditor();
   await reloadVisibleData();
