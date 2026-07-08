@@ -17,6 +17,7 @@ const state = {
   editingTaskColor: "#0a84ff",
   newTaskColor: "#4da1ff",
   timelineDate: dateKey(new Date()),
+  timelineShouldCenterNow: true,
 };
 
 const fmt = new Intl.DateTimeFormat("en", { month: "long", day: "numeric", year: "numeric" });
@@ -263,6 +264,11 @@ function timeKey(value) {
 function kstHourFraction(value) {
   const parts = kstParts(value);
   return parts.hour + Number(parts.minute) / 60;
+}
+
+function centeredTimelineScrollTop(board, lineTop, contentHeight) {
+  const maxScrollTop = Math.max(0, contentHeight - board.clientHeight);
+  return Math.max(0, Math.min(maxScrollTop, lineTop - board.clientHeight / 2));
 }
 
 function kstMonthIndex(value) {
@@ -684,6 +690,7 @@ function renderWeekStrip() {
 
 async function setTimelineDate(value) {
   state.timelineDate = value;
+  state.timelineShouldCenterNow = value === dateKey(new Date());
   document.getElementById("timeline-date").textContent = fmt.format(dateFromKey(state.timelineDate));
   document.getElementById("timeline-date-picker").value = state.timelineDate;
   renderWeekStrip();
@@ -722,11 +729,17 @@ function renderTimeline() {
   }).join("");
   const now = new Date();
   const nowHour = now.getHours() + now.getMinutes() / 60;
+  const nowLineTop = timelinePadding + (nowHour - startHour) * pxPerHour;
   const nowLine = dateKey(now) === state.timelineDate && nowHour >= startHour && nowHour <= endHour
-    ? `<div class="now-line" style="top:${timelinePadding + (nowHour - startHour) * pxPerHour}px"></div>`
+    ? `<div class="now-line" style="top:${nowLineTop}px"></div>`
     : "";
   board.innerHTML = `<div class="timeline-content" style="height:${contentHeight}px;--timeline-offset:${timelinePadding}px">${labels + events + nowLine}</div>`;
-  board.scrollTop = previousScrollTop;
+  if (state.timelineShouldCenterNow && nowLine && board.clientHeight > 0) {
+    board.scrollTop = centeredTimelineScrollTop(board, nowLineTop, contentHeight);
+    state.timelineShouldCenterNow = false;
+  } else {
+    board.scrollTop = previousScrollTop;
+  }
   bindSessionEditTriggers(board);
 }
 
@@ -1093,6 +1106,7 @@ async function showView(viewName) {
   syncActiveViewClass();
   document.querySelectorAll(".nav-item").forEach((item) => item.classList.toggle("active", item.dataset.view === viewName));
   document.querySelectorAll(".view").forEach((view) => view.classList.toggle("active", view.id === `${viewName}-view`));
+  if (viewName === "timeline" && state.timelineShouldCenterNow) requestAnimationFrame(renderTimeline);
   if (viewName === "reports") await loadReportData();
   if (viewName === "settings") await loadAdminData();
 }
