@@ -4,14 +4,14 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Timetracking Dashboard</title>
-    <link rel="stylesheet" href="/static/styles.css?v=20260707-24" />
+    <link rel="stylesheet" href="/static/styles.css?v=20260708-3" />
   </head>
   <body>
     <div class="app-shell">
       <aside class="sidebar">
         <div class="brand">
           <span class="brand-mark"></span>
-          <span>Timetrack</span>
+          <span>TimeTracking</span>
         </div>
         <nav class="nav" aria-label="Main">
           <button class="nav-item active" data-view="tasks" aria-label="Tasks">
@@ -66,31 +66,40 @@
 
       <main class="content">
         <section class="view active" id="tasks-view" aria-labelledby="tasks-title">
-          <header class="topbar">
-            <div>
-              <div class="eyebrow" id="today-label"></div>
-              <h1 id="tasks-title">Tasks</h1>
-            </div>
-            <div class="top-actions">
-              <button class="icon-button" id="add-task" aria-label="Add task" title="Add task">
-                <svg class="button-icon" aria-hidden="true" viewBox="0 0 24 24">
-                  <path d="M12 5v14" />
-                  <path d="M5 12h14" />
-                </svg>
-              </button>
-              <button class="text-button" id="task-edit-toggle">Edit</button>
-            </div>
-          </header>
+          <div class="tasks-layout">
+            <section class="tasks-rail" aria-label="Task list">
+              <div class="rail-toolbar">
+                <div class="task-tabs" role="tablist" aria-label="Task filters">
+                  <button class="task-tab active" data-filter="active">All Tasks</button>
+                  <button class="task-tab" data-filter="recent">Recent</button>
+                  <button class="task-tab" data-filter="archive">Archive</button>
+                </div>
+                <div class="top-actions">
+                  <button class="icon-button" id="add-task" aria-label="Add task" title="Add task">
+                    <svg class="button-icon" aria-hidden="true" viewBox="0 0 24 24">
+                      <path d="M12 5v14" />
+                      <path d="M5 12h14" />
+                    </svg>
+                  </button>
+                  <button class="text-button" id="task-edit-toggle">Edit</button>
+                </div>
+              </div>
+              <section class="panel task-panel">
+                <div class="task-list" id="task-list"></div>
+              </section>
+            </section>
 
-          <div class="task-tabs" role="tablist" aria-label="Task filters">
-            <button class="task-tab active" data-filter="active">Tasks</button>
-            <button class="task-tab" data-filter="recent">Recent</button>
-            <button class="task-tab" data-filter="archive">Archive</button>
+            <section class="entries-panel" aria-labelledby="tasks-title">
+              <header class="entries-header">
+                <div>
+                  <h1 id="tasks-title">Time Entries</h1>
+                  <span id="today-label"></span>
+                </div>
+                <strong id="today-total">0:00</strong>
+              </header>
+              <div class="entries-list" id="tasks-entry-list"></div>
+            </section>
           </div>
-
-          <section class="panel task-panel">
-            <div class="task-list" id="task-list"></div>
-          </section>
         </section>
 
         <section class="view" id="timeline-view" aria-labelledby="timeline-title">
@@ -100,12 +109,13 @@
               <input class="date-picker" id="timeline-date-picker" type="date" aria-label="Select timeline date" />
               <h1 id="timeline-title">Timeline</h1>
             </div>
-            <button class="icon-button" id="refresh-timeline" aria-label="Refresh timeline" title="Refresh">
+            <button class="icon-button" id="timeline-reports" aria-label="Open reports" title="Reports">
               <svg class="button-icon" aria-hidden="true" viewBox="0 0 24 24">
-                <path d="M20 6v5h-5" />
-                <path d="M4 18v-5h5" />
-                <path d="M18.2 9A7 7 0 0 0 6.5 6.5L4 9" />
-                <path d="M5.8 15A7 7 0 0 0 17.5 17.5L20 15" />
+                <path d="M4 19V5" />
+                <path d="M4 19h16" />
+                <path d="M8 16v-4" />
+                <path d="M13 16V8" />
+                <path d="M18 16v-6" />
               </svg>
             </button>
           </header>
@@ -328,6 +338,6 @@
       </form>
     </dialog>
 
-    <script src="/static/app.js?v=20260707-24"></script>
+    <script src="/static/app.js?v=20260708-4"></script>
   </body>
 </html>

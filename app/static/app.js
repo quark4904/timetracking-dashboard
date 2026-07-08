@@ -16,7 +16,12 @@ const state = {
 };
 
 const fmt = new Intl.DateTimeFormat("en", { month: "long", day: "numeric", year: "numeric" });
-const timeFmt = new Intl.DateTimeFormat("ko-KR", { timeZone: "Asia/Seoul", hour: "numeric", minute: "2-digit" });
+const timeFmt = new Intl.DateTimeFormat("ko-KR", {
+  timeZone: "Asia/Seoul",
+  hour: "2-digit",
+  minute: "2-digit",
+  hourCycle: "h23",
+});
 const kstPartsFmt = new Intl.DateTimeFormat("en", {
   timeZone: "Asia/Seoul",
   year: "numeric",
@@ -219,6 +224,7 @@ function kstMonthIndex(value) {
 
 function renderTasks() {
   const list = document.getElementById("task-list");
+  const entryList = document.getElementById("tasks-entry-list");
   const active = activeSession();
   const tasksView = document.getElementById("tasks-view");
   tasksView.classList.toggle("tasks-editing", state.isTaskEditing);
@@ -228,6 +234,7 @@ function renderTasks() {
     if (state.filter === "recent") return !task.archived && task.total_seconds > 0;
     return !task.archived;
   });
+  renderTaskEntries(entryList);
 
   if (state.isTaskEditing) {
     list.innerHTML = rows.map((task) => {
@@ -272,6 +279,56 @@ function renderTasks() {
       await reloadVisibleData();
     });
   });
+}
+
+function renderTaskEntries(entryList) {
+  const now = new Date();
+  const today = dateKey(now);
+  const recentSessions = state.sessions
+    .filter((session) => session.ended_at || kstDateKey(session.started_at) === today)
+    .sort((a, b) => new Date(b.started_at) - new Date(a.started_at))
+    .slice(0, 8);
+  const todaySeconds = state.sessions
+    .filter((session) => kstDateKey(session.started_at) === today)
+    .reduce((total, session) => total + secondsBetween(session.started_at, session.ended_at), 0);
+  document.getElementById("today-total").textContent = formatDuration(todaySeconds);
+
+  if (!recentSessions.length) {
+    entryList.innerHTML = `
+      <div class="entry-empty">
+        <strong>No entries yet</strong>
+        <span>Start a task to fill today’s timeline.</span>
+      </div>
+    `;
+    return;
+  }
+
+  let lastDate = "";
+  entryList.innerHTML = recentSessions.map((session) => {
+    const sessionDate = kstDateKey(session.started_at);
+    const date = dateFromKey(sessionDate);
+    const heading = sessionDate === lastDate ? "" : `
+      <div class="entry-day">
+        <strong>${date.toLocaleDateString("en", { weekday: "long" })}</strong>
+        <span>${date.toLocaleDateString("en", { month: "long", day: "numeric" })}</span>
+      </div>
+    `;
+    lastDate = sessionDate;
+    return `
+      ${heading}
+      <button class="entry-row session-edit-trigger" data-session-id="${session.id}" style="--task-color:${session.task_color}">
+        <span class="entry-times">
+          <span>${timeFmt.format(new Date(session.started_at))}</span>
+          <span>${session.ended_at ? timeFmt.format(new Date(session.ended_at)) : "Running"}</span>
+        </span>
+        <span class="entry-marker"></span>
+        <span class="entry-title">${escapeHtml(session.task_name)}</span>
+        <span class="entry-note">${escapeHtml(session.notes || "")}</span>
+        <strong>${formatDuration(secondsBetween(session.started_at, session.ended_at))}</strong>
+      </button>
+    `;
+  }).join("");
+  bindSessionEditTriggers(entryList);
 }
 
 function visibleTasks() {
@@ -628,14 +685,18 @@ function escapeHtml(value) {
   })[char]);
 }
 
+async function showView(viewName) {
+  state.activeView = viewName;
+  syncActiveViewClass();
+  document.querySelectorAll(".nav-item").forEach((item) => item.classList.toggle("active", item.dataset.view === viewName));
+  document.querySelectorAll(".view").forEach((view) => view.classList.toggle("active", view.id === `${viewName}-view`));
+  if (viewName === "reports") await loadReportData();
+  if (viewName === "admin") await loadAdminData();
+}
+
 document.querySelectorAll(".nav-item").forEach((button) => {
-  button.addEventListener("click", async () => {
-    state.activeView = button.dataset.view;
-    syncActiveViewClass();
-    document.querySelectorAll(".nav-item").forEach((item) => item.classList.toggle("active", item === button));
-    document.querySelectorAll(".view").forEach((view) => view.classList.toggle("active", view.id === `${state.activeView}-view`));
-    if (state.activeView === "reports") await loadReportData();
-    if (state.activeView === "admin") await loadAdminData();
+  button.addEventListener("click", () => {
+    showView(button.dataset.view);
   });
 });
 
@@ -675,8 +736,8 @@ document.getElementById("task-form").addEventListener("submit", async (event) =>
   await reloadVisibleData();
 });
 
-document.getElementById("refresh-timeline").addEventListener("click", async () => {
-  await loadData();
+document.getElementById("timeline-reports").addEventListener("click", () => {
+  showView("reports");
 });
 document.getElementById("refresh-admin").addEventListener("click", loadAdminData);
 document.getElementById("timeline-date").addEventListener("click", () => {
