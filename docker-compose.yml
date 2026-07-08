@@ -4,7 +4,7 @@ services:
     container_name: timetracking-dashboard
     restart: unless-stopped
     ports:
-      - "8010:8080"
+      - "8010:8000"
     volumes:
       - ./data:/app/data
     environment:
