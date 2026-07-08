@@ -129,10 +129,11 @@ def update_session(session_id: int, payload: SessionUpdate) -> dict:
     return session
 
 
-@app.delete("/api/sessions/{session_id}", status_code=204, response_class=Response)
-def delete_session(session_id: int) -> None:
+@app.delete("/api/sessions/{session_id}")
+def delete_session(session_id: int) -> Response:
     if not repository.delete_session(session_id):
         raise HTTPException(status_code=404, detail="Session not found")
+    return Response(status_code=204)
 
 
 @app.get("/api/admin/db")
