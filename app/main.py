@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Response
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
@@ -129,7 +129,7 @@ def update_session(session_id: int, payload: SessionUpdate) -> dict:
     return session
 
 
-@app.delete("/api/sessions/{session_id}", status_code=204)
+@app.delete("/api/sessions/{session_id}", status_code=204, response_class=Response)
 def delete_session(session_id: int) -> None:
     if not repository.delete_session(session_id):
         raise HTTPException(status_code=404, detail="Session not found")
