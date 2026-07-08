@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Timetracking Dashboard</title>
-    <link rel="stylesheet" href="/static/styles.css?v=20260708-19" />
+    <link rel="stylesheet" href="/static/styles.css?v=20260708-24" />
   </head>
   <body>
     <div class="app-shell">
@@ -54,6 +54,13 @@
             <span>Settings</span>
           </button>
         </nav>
+        <button class="active-session-control idle" id="active-session-control" type="button" disabled aria-label="No active session">
+          <span class="active-session-icon" aria-hidden="true"></span>
+          <span class="active-session-copy">
+            <strong id="active-session-task">No active task</strong>
+            <span id="active-session-time">0:00:00</span>
+          </span>
+        </button>
       </aside>
 
       <main class="content">
@@ -336,6 +343,6 @@
       <span></span>
     </div>
 
-    <script src="/static/app.js?v=20260708-19"></script>
+    <script src="/static/app.js?v=20260708-24"></script>
   </body>
 </html>

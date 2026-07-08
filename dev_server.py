@@ -36,6 +36,8 @@ class Handler(BaseHTTPRequestHandler):
                 ))
             except ValueError as exc:
                 return self.send_error(400, str(exc))
+        if parsed.path == "/api/sessions/active":
+            return self.send_json(repository.get_active_session())
         if parsed.path == "/api/admin/db":
             return self.send_json(repository.list_admin_db())
         return self.send_error(404)
@@ -46,7 +48,7 @@ class Handler(BaseHTTPRequestHandler):
             return self.serve_file(STATIC / "index.html", head_only=True)
         if parsed.path.startswith("/static/"):
             return self.serve_file(STATIC / parsed.path.removeprefix("/static/"), head_only=True)
-        if parsed.path in {"/api/health", "/api/tasks", "/api/sessions", "/api/admin/db"}:
+        if parsed.path in {"/api/health", "/api/tasks", "/api/sessions", "/api/sessions/active", "/api/admin/db"}:
             self.send_response(200)
             self.send_header("Content-Type", "application/json; charset=utf-8")
             self.end_headers()

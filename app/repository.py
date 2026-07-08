@@ -242,6 +242,12 @@ def stop_active_session() -> dict | None:
         return get_session(row["id"], conn)
 
 
+def get_active_session() -> dict | None:
+    with connect() as conn:
+        row = conn.execute("SELECT id FROM sessions WHERE ended_at IS NULL LIMIT 1").fetchone()
+        return get_session(row["id"], conn) if row else None
+
+
 def update_session(
     session_id: int,
     task_id: int,

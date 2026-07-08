@@ -1,6 +1,7 @@
 const state = {
   tasks: [],
   sessions: [],
+  activeSession: null,
   reportSessions: [],
   admin: null,
   sessionsMonth: null,
@@ -95,13 +96,19 @@ async function api(path, options = {}) {
 }
 
 async function loadData() {
-  const [tasks, sessions] = await Promise.all([
+  const [tasks, sessions, active] = await Promise.all([
     api("/api/tasks?include_archived=true"),
     fetchTimelineSessions(true),
+    fetchActiveSession(),
   ]);
   state.tasks = tasks;
   state.sessions = sessions;
+  state.activeSession = active;
   render();
+}
+
+async function fetchActiveSession() {
+  return api("/api/sessions/active").catch(() => null);
 }
 
 function monthRangeForDateKey(value) {
@@ -158,7 +165,7 @@ async function reloadVisibleData() {
 }
 
 function activeSession() {
-  return state.sessions.find((session) => !session.ended_at);
+  return state.activeSession || state.sessions.find((session) => !session.ended_at);
 }
 
 function taskTotal(task) {
@@ -174,6 +181,7 @@ function render() {
   document.getElementById("today-label").textContent = fmt.format(new Date());
   document.getElementById("timeline-date").textContent = fmt.format(dateFromKey(state.timelineDate));
   document.getElementById("timeline-date-picker").value = state.timelineDate;
+  renderActiveSessionControl();
   renderTasks();
   renderWeekStrip();
   renderTimeline();
@@ -183,6 +191,7 @@ function render() {
 
 function syncActiveViewClass() {
   document.body.classList.toggle("timeline-active", state.activeView === "timeline");
+  document.body.classList.toggle("tasks-active", state.activeView === "tasks");
 }
 
 function updateLiveTimers() {
@@ -190,7 +199,35 @@ function updateLiveTimers() {
   if (!active) return;
   const runningRow = document.querySelector(`.task-row.running[data-task-id="${active.task_id}"]`);
   const time = runningRow?.querySelector(".task-time");
-  if (time) time.textContent = formatLiveDuration(secondsBetween(active.started_at, null));
+  const liveLabel = formatLiveDuration(secondsBetween(active.started_at, null));
+  if (time) time.textContent = liveLabel;
+  const activeSessionTime = document.getElementById("active-session-time");
+  if (activeSessionTime) activeSessionTime.textContent = liveLabel;
+}
+
+function renderActiveSessionControl() {
+  const control = document.getElementById("active-session-control");
+  const active = activeSession();
+  if (!control) return;
+  document.body.classList.toggle("has-active-session", Boolean(active));
+  control.classList.toggle("idle", !active);
+  control.disabled = !active;
+  control.hidden = false;
+  control.setAttribute("aria-label", active ? "Stop active session" : "No active session");
+  if (!active) {
+    control.style.removeProperty("--task-color");
+    document.getElementById("active-session-task").textContent = "No active task";
+    document.getElementById("active-session-time").textContent = "0:00:00";
+    return;
+  }
+  control.style.setProperty("--task-color", active.task_color || taskColorForSession(active));
+  document.getElementById("active-session-task").textContent = active.task_name;
+  document.getElementById("active-session-time").textContent = formatLiveDuration(secondsBetween(active.started_at, null));
+}
+
+async function stopActiveSession() {
+  await api("/api/sessions/stop", { method: "POST" }).catch(() => null);
+  await reloadVisibleData();
 }
 
 function kstParts(value) {
@@ -464,9 +501,9 @@ function renderTasks() {
   list.querySelectorAll(".task-row").forEach((row) => {
     row.addEventListener("click", async () => {
       const taskId = Number(row.dataset.taskId);
-      if (active?.task_id === taskId) await api("/api/sessions/stop", { method: "POST" }).catch(() => null);
+      if (active?.task_id === taskId) await stopActiveSession();
       else await api(`/api/tasks/${taskId}/start`, { method: "POST" });
-      await reloadVisibleData();
+      if (active?.task_id !== taskId) await reloadVisibleData();
     });
   });
 }
@@ -1255,6 +1292,8 @@ document.getElementById("delete-session").addEventListener("click", async () => 
   closeSessionEditor();
   await reloadVisibleData();
 });
+
+document.getElementById("active-session-control").addEventListener("click", stopActiveSession);
 
 loadData();
 setInterval(updateLiveTimers, 1000);

@@ -120,6 +120,11 @@ def stop_session() -> dict:
     return session
 
 
+@app.get("/api/sessions/active")
+def active_session() -> dict | None:
+    return repository.get_active_session()
+
+
 @app.get("/api/sessions")
 def sessions(start: str | None = None, end: str | None = None) -> list[dict]:
     try:
