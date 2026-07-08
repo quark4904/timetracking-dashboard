@@ -4,7 +4,9 @@ const state = {
   reportSessions: [],
   admin: null,
   sessionsMonth: null,
-  reportYear: new Date().getFullYear(),
+  reportMode: "year",
+  reportDate: dateKey(new Date()),
+  reportDataKey: null,
   filter: "active",
   activeView: "tasks",
   editingSessionId: null,
@@ -33,6 +35,9 @@ const kstPartsFmt = new Intl.DateTimeFormat("en", {
   hourCycle: "h23",
 });
 const monthNames = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
+const weekdayNames = ["SUNDAY", "MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY"];
+const fullMonthDayFmt = new Intl.DateTimeFormat("en", { month: "long", day: "numeric" });
+const fullMonthYearFmt = new Intl.DateTimeFormat("en", { month: "long", year: "numeric" });
 const taskColors = [
   "#bf3ff0", "#ff0a8a", "#ff0a4f", "#ff8a0a", "#ffcc1a", "#00d934", "#24bce3", "#1597ef", "#5956f4",
   "#bf7af0", "#ff7ac7", "#ff767d", "#c49a63", "#8aef00", "#10e69a", "#28d7d7", "#45d0e8", "#8198ff",
@@ -130,13 +135,13 @@ async function loadTimelineSessions(force = false) {
 }
 
 async function loadReportData(force = false) {
-  if (!force && state.reportSessions.length) {
+  const range = reportRange();
+  if (!force && state.reportDataKey === range.key) {
     renderReports();
     return;
   }
-  const start = `${state.reportYear}-01-01`;
-  const end = `${state.reportYear + 1}-01-01`;
-  state.reportSessions = await api(sessionsPathForRange(start, end));
+  state.reportSessions = await api(sessionsPathForRange(range.start, range.end));
+  state.reportDataKey = range.key;
   renderReports();
 }
 
@@ -220,6 +225,186 @@ function kstHourFraction(value) {
 
 function kstMonthIndex(value) {
   return Number(kstParts(value).month) - 1;
+}
+
+function addDays(value, amount) {
+  const date = dateFromKey(value);
+  date.setDate(date.getDate() + amount);
+  return dateKey(date);
+}
+
+function addMonths(value, amount) {
+  const date = dateFromKey(value);
+  date.setMonth(date.getMonth() + amount);
+  return dateKey(date);
+}
+
+function addYears(value, amount) {
+  const date = dateFromKey(value);
+  date.setFullYear(date.getFullYear() + amount);
+  return dateKey(date);
+}
+
+function startOfWeekKey(value) {
+  const date = dateFromKey(value);
+  date.setDate(date.getDate() - date.getDay());
+  return dateKey(date);
+}
+
+function reportRangeFor(mode, value) {
+  const date = dateFromKey(value);
+  if (mode === "day") {
+    const start = dateKey(date);
+    return { start, end: addDays(start, 1), key: `${mode}:${start}` };
+  }
+  if (mode === "week") {
+    const start = startOfWeekKey(value);
+    return { start, end: addDays(start, 7), key: `${mode}:${start}` };
+  }
+  if (mode === "month") {
+    const start = dateKey(new Date(date.getFullYear(), date.getMonth(), 1));
+    return { start, end: addMonths(start, 1), key: `${mode}:${start}` };
+  }
+  const start = `${date.getFullYear()}-01-01`;
+  return { start, end: `${date.getFullYear() + 1}-01-01`, key: `${mode}:${start}` };
+}
+
+function reportRange() {
+  return reportRangeFor(state.reportMode, state.reportDate);
+}
+
+function reportModeStep(mode) {
+  if (mode === "day") return (value, amount) => addDays(value, amount);
+  if (mode === "week") return (value, amount) => addDays(value, amount * 7);
+  if (mode === "month") return addMonths;
+  return addYears;
+}
+
+function reportPeriodLabel(mode, value, compact = false) {
+  const date = dateFromKey(value);
+  if (mode === "day") {
+    return compact ? fullMonthDayFmt.format(date) : fmt.format(date);
+  }
+  if (mode === "week") {
+    const start = dateFromKey(startOfWeekKey(value));
+    const end = dateFromKey(addDays(dateKey(start), 6));
+    if (compact) return fullMonthDayFmt.format(start);
+    return `${fullMonthDayFmt.format(start)}, ${start.getFullYear()} - ${fullMonthDayFmt.format(end)}, ${end.getFullYear()}`;
+  }
+  if (mode === "month") {
+    return fullMonthYearFmt.format(date);
+  }
+  return String(date.getFullYear());
+}
+
+function currentReportDateForMode(mode) {
+  const today = dateKey(new Date());
+  if (mode === "week") return startOfWeekKey(today);
+  if (mode === "month") {
+    const date = dateFromKey(today);
+    return dateKey(new Date(date.getFullYear(), date.getMonth(), 1));
+  }
+  if (mode === "year") {
+    const date = dateFromKey(today);
+    return `${date.getFullYear()}-01-01`;
+  }
+  return today;
+}
+
+function reportEyebrowText(mode) {
+  return {
+    day: "Day overview",
+    week: "Week overview",
+    month: "Month overview",
+    year: "Year overview",
+  }[mode];
+}
+
+function averageLabelText(mode) {
+  return {
+    day: "Hourly Avg.",
+    week: "Daily Avg.",
+    month: "Daily Avg.",
+    year: "Monthly Avg.",
+  }[mode];
+}
+
+function reportSessionInRange(session, range) {
+  const key = kstDateKey(session.started_at);
+  return key >= range.start && key < range.end;
+}
+
+function createReportBuckets(mode, range) {
+  if (mode === "day") {
+    return Array.from({ length: 24 }, (_, index) => ({
+      key: String(index).padStart(2, "0"),
+      label: index % 3 === 0 ? String(index).padStart(2, "0") : "",
+      total: 0,
+      tasks: new Map(),
+    }));
+  }
+  if (mode === "week") {
+    return Array.from({ length: 7 }, (_, index) => {
+      const key = addDays(range.start, index);
+      const date = dateFromKey(key);
+      return {
+        key,
+        label: `${weekdayNames[date.getDay()]}<span>${String(date.getMonth() + 1).padStart(2, "0")}/${String(date.getDate()).padStart(2, "0")}</span>`,
+        total: 0,
+        tasks: new Map(),
+      };
+    });
+  }
+  if (mode === "month") {
+    const start = dateFromKey(range.start);
+    const end = dateFromKey(range.end);
+    const length = Math.round((end - start) / 86400000);
+    return Array.from({ length }, (_, index) => {
+      const key = addDays(range.start, index);
+      const date = dateFromKey(key);
+      return {
+        key,
+        label: String(date.getDate()),
+        total: 0,
+        tasks: new Map(),
+      };
+    });
+  }
+  return monthNames.map((label, index) => ({
+    key: String(index),
+    label,
+    total: 0,
+    tasks: new Map(),
+  }));
+}
+
+function reportBucketIndex(mode, session, range) {
+  const parts = kstParts(session.started_at);
+  if (mode === "day") return parts.hour;
+  if (mode === "week" || mode === "month") {
+    return Math.floor((dateFromKey(kstDateKey(session.started_at)) - dateFromKey(range.start)) / 86400000);
+  }
+  return Number(parts.month) - 1;
+}
+
+function taskColorForSession(session) {
+  return session.task_color || state.tasks.find((task) => task.id === session.task_id)?.color || "#0a84ff";
+}
+
+function reportDateHeading(dateKeyValue) {
+  const date = dateFromKey(dateKeyValue);
+  const weekday = new Intl.DateTimeFormat("en", { weekday: "long" }).format(date);
+  const monthDay = new Intl.DateTimeFormat("en", { month: "long", day: "numeric" }).format(date);
+  return `${weekday}, ${monthDay}`;
+}
+
+function groupedSessionsByDate(sessions) {
+  return sessions.reduce((groups, session) => {
+    const key = kstDateKey(session.started_at);
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(session);
+    return groups;
+  }, new Map());
 }
 
 function renderTasks() {
@@ -505,20 +690,69 @@ function renderTimeline() {
 
 function renderReports() {
   const totalByTask = new Map();
-  const totalByMonth = Array(12).fill(0);
-  state.reportSessions.forEach((session) => {
+  const range = reportRange();
+  const reportSessions = state.reportSessions.filter((session) => reportSessionInRange(session, range));
+  const buckets = createReportBuckets(state.reportMode, range);
+  reportSessions.forEach((session) => {
     const seconds = secondsBetween(session.started_at, session.ended_at);
+    const bucketIndex = reportBucketIndex(state.reportMode, session, range);
+    const bucket = buckets[bucketIndex];
+    if (!bucket) return;
+    bucket.total += seconds;
+    const existingTask = bucket.tasks.get(session.task_id) || {
+      seconds: 0,
+      color: taskColorForSession(session),
+      name: session.task_name,
+    };
+    existingTask.seconds += seconds;
+    bucket.tasks.set(session.task_id, existingTask);
     totalByTask.set(session.task_id, (totalByTask.get(session.task_id) || 0) + seconds);
-    totalByMonth[kstMonthIndex(session.started_at)] += seconds;
   });
-  const total = totalByMonth.reduce((sum, value) => sum + value, 0);
+  const total = buckets.reduce((sum, bucket) => sum + bucket.total, 0);
   document.getElementById("total-time").textContent = formatDuration(total);
-  document.getElementById("monthly-average").textContent = formatDuration(total / Math.max(1, totalByMonth.filter(Boolean).length));
-  const maxMonth = Math.max(3600, ...totalByMonth);
-  document.getElementById("bar-chart").innerHTML = totalByMonth.map((seconds, index) => {
-    const height = Math.max(1, (seconds / maxMonth) * 210);
-    const color = index === 6 ? "#ffcc1a" : "#0a84ff";
-    return `<div class="month-bar" data-month="${monthNames[index]}" style="height:${height}px;background:${color}"></div>`;
+  document.getElementById("average-label").textContent = averageLabelText(state.reportMode);
+  document.getElementById("period-average").textContent = formatDuration(total / Math.max(1, buckets.filter((bucket) => bucket.total > 0).length));
+  document.getElementById("reports-eyebrow").textContent = reportEyebrowText(state.reportMode);
+  const previousPeriodLabel = reportPeriodLabel(
+    state.reportMode,
+    reportModeStep(state.reportMode)(state.reportDate, -1),
+    true,
+  );
+  const nextPeriodLabel = reportPeriodLabel(
+    state.reportMode,
+    reportModeStep(state.reportMode)(state.reportDate, 1),
+    true,
+  );
+  document.getElementById("report-prev-period").setAttribute("aria-label", `Previous period, ${previousPeriodLabel}`);
+  document.getElementById("report-prev-period").title = previousPeriodLabel;
+  document.getElementById("report-current-period").textContent = reportPeriodLabel(state.reportMode, state.reportDate);
+  document.getElementById("report-next-period").setAttribute("aria-label", `Next period, ${nextPeriodLabel}`);
+  document.getElementById("report-next-period").title = nextPeriodLabel;
+  document.querySelectorAll("[data-report-range]").forEach((button) => {
+    button.classList.toggle("active", button.dataset.reportRange === state.reportMode);
+  });
+
+  const maxBucket = Math.max(3600, ...buckets.map((bucket) => bucket.total));
+  const chart = document.getElementById("bar-chart");
+  chart.dataset.range = state.reportMode;
+  chart.style.setProperty("--bar-count", buckets.length);
+  chart.innerHTML = buckets.map((bucket) => {
+    const height = bucket.total > 0 ? Math.max(8, (bucket.total / maxBucket) * 210) : 1;
+    const segments = Array.from(bucket.tasks.values())
+      .sort((a, b) => b.seconds - a.seconds)
+      .map((task) => {
+        const segmentHeight = bucket.total ? (task.seconds / bucket.total) * 100 : 0;
+        return `<span class="bar-segment" data-tooltip-name="${escapeHtml(task.name)}" data-tooltip-time="${formatDuration(task.seconds)}" style="height:${segmentHeight}%;background:${task.color}"></span>`;
+      })
+      .join("");
+    const label = bucket.total > 0 ? `<span class="bar-total">${formatDuration(bucket.total)}</span>` : "";
+    return `
+      <div class="report-bar-wrap">
+        ${label}
+        <div class="report-bar" style="height:${height}px">${segments}</div>
+        <span class="bar-label">${bucket.label}</span>
+      </div>
+    `;
   }).join("");
 
   const breakdown = state.tasks
@@ -532,7 +766,10 @@ function renderReports() {
         <span class="check-dot"></span>
         <div>
           <div class="task-name">${escapeHtml(task.name)}</div>
-          <div class="progress-track"><div class="progress-fill" style="--pct:${pct}%"></div></div>
+          <div class="progress-line">
+            <div class="progress-track"><div class="progress-fill" style="--pct:${pct}%"></div></div>
+            <span>${pct}%</span>
+          </div>
         </div>
         <div class="task-time">${formatDuration(task.seconds)}</div>
       </div>
@@ -540,20 +777,33 @@ function renderReports() {
   }).join("");
 
   const sessionList = document.getElementById("session-list");
-  sessionList.innerHTML = state.reportSessions.map((session) => `
-    <button class="session-row session-edit-trigger" data-session-id="${session.id}" style="--task-color:${session.task_color}">
-      <div class="session-times">
-        <span>${timeFmt.format(new Date(session.started_at))}</span>
-        <span>${session.ended_at ? timeFmt.format(new Date(session.ended_at)) : "Running"}</span>
-      </div>
-      <span class="session-color"></span>
-      <div>
-        <div class="session-title">${escapeHtml(session.task_name)}</div>
-        <div class="session-notes">${escapeHtml(session.notes || "No notes")}</div>
-      </div>
-      <strong>${formatDuration(secondsBetween(session.started_at, session.ended_at))}</strong>
-    </button>
-  `).join("");
+  sessionList.innerHTML = Array.from(groupedSessionsByDate(reportSessions).entries()).map(([date, sessions]) => {
+    const dayTotal = sessions.reduce((sum, session) => sum + secondsBetween(session.started_at, session.ended_at), 0);
+    return `
+      <section class="session-day-group">
+        <header class="session-day-heading">
+          <span>${escapeHtml(reportDateHeading(date))}</span>
+          <strong>${formatDuration(dayTotal)}</strong>
+        </header>
+        <div class="session-day-list">
+          ${sessions.map((session) => `
+            <button class="session-row session-edit-trigger" data-session-id="${session.id}" style="--task-color:${session.task_color}">
+              <div class="session-times">
+                <span>${timeFmt.format(new Date(session.started_at))}</span>
+                <span>${session.ended_at ? timeFmt.format(new Date(session.ended_at)) : "Running"}</span>
+              </div>
+              <span class="session-color"></span>
+              <div>
+                <div class="session-title">${escapeHtml(session.task_name)}</div>
+                <div class="session-notes">${escapeHtml(session.notes || "No notes")}</div>
+              </div>
+              <strong>${formatDuration(secondsBetween(session.started_at, session.ended_at))}</strong>
+            </button>
+          `).join("")}
+        </div>
+      </section>
+    `;
+  }).join("");
   bindSessionEditTriggers(sessionList);
 }
 
@@ -584,6 +834,31 @@ function renderAdmin() {
   `;
 }
 
+function moveChartTooltip(event) {
+  const tooltip = document.getElementById("chart-tooltip");
+  const offset = 14;
+  const rect = tooltip.getBoundingClientRect();
+  const left = Math.min(window.innerWidth - rect.width - 12, event.clientX + offset);
+  const top = Math.max(12, event.clientY - rect.height - offset);
+  tooltip.style.left = `${Math.max(12, left)}px`;
+  tooltip.style.top = `${top}px`;
+}
+
+function showChartTooltip(target, event) {
+  const tooltip = document.getElementById("chart-tooltip");
+  tooltip.querySelector("strong").textContent = target.dataset.tooltipName || "";
+  tooltip.querySelector("span").textContent = target.dataset.tooltipTime || "";
+  tooltip.setAttribute("aria-hidden", "false");
+  tooltip.classList.add("visible");
+  moveChartTooltip(event);
+}
+
+function hideChartTooltip() {
+  const tooltip = document.getElementById("chart-tooltip");
+  tooltip.setAttribute("aria-hidden", "true");
+  tooltip.classList.remove("visible");
+}
+
 function bindSessionEditTriggers(root) {
   root.querySelectorAll(".session-edit-trigger").forEach((element) => {
     element.addEventListener("click", () => openSessionEditor(Number(element.dataset.sessionId)));
@@ -598,6 +873,65 @@ function selectedSession() {
   ].find((session) => session.id === state.editingSessionId);
 }
 
+function availableSessionTasks(session) {
+  return state.tasks.filter((task) => !task.archived || task.id === session.task_id);
+}
+
+function selectedSessionTask() {
+  const taskId = Number(document.getElementById("session-task").value);
+  return state.tasks.find((task) => task.id === taskId);
+}
+
+function closeSessionTaskMenu() {
+  document.getElementById("session-task-menu").classList.remove("open");
+  document.getElementById("session-task-button").setAttribute("aria-expanded", "false");
+}
+
+function updateSessionTaskButton() {
+  const task = selectedSessionTask();
+  const button = document.getElementById("session-task-button");
+  if (!task) {
+    button.innerHTML = "<span>Select task</span>";
+    return;
+  }
+  button.style.setProperty("--task-color", task.color);
+  button.innerHTML = `
+    <span class="task-picker-dot"></span>
+    <span class="task-picker-name">${escapeHtml(task.name)}</span>
+    <span class="task-picker-chevron">⌄</span>
+  `;
+}
+
+function renderSessionTaskPicker(session) {
+  const tasks = availableSessionTasks(session);
+  const select = document.getElementById("session-task");
+  select.innerHTML = tasks.map((task) => `<option value="${task.id}">${escapeHtml(task.name)}</option>`).join("");
+  select.value = String(session.task_id);
+  const selectedId = Number(select.value);
+  document.getElementById("session-task-menu").innerHTML = tasks.map((task) => `
+    <button
+      class="session-task-option ${task.id === selectedId ? "selected" : ""}"
+      type="button"
+      role="option"
+      aria-selected="${task.id === selectedId ? "true" : "false"}"
+      data-task-id="${task.id}"
+      style="--task-color:${task.color}"
+    >
+      <span class="task-picker-dot"></span>
+      <span>${escapeHtml(task.name)}</span>
+      <span class="task-picker-check">${task.id === selectedId ? "✓" : ""}</span>
+    </button>
+  `).join("");
+  updateSessionTaskButton();
+}
+
+function setSessionTask(taskId) {
+  document.getElementById("session-task").value = String(taskId);
+  const session = selectedSession();
+  if (session) renderSessionTaskPicker({ ...session, task_id: Number(taskId) });
+  closeSessionTaskMenu();
+}
+
 function openSessionEditor(sessionId) {
   const session = [
     ...state.sessions,
@@ -606,11 +940,7 @@ function openSessionEditor(sessionId) {
   ].find((item) => item.id === sessionId);
   if (!session) return;
   state.editingSessionId = sessionId;
-  document.getElementById("session-task").innerHTML = state.tasks
-    .filter((task) => !task.archived || task.id === session.task_id)
-    .map((task) => `<option value="${task.id}">${escapeHtml(task.name)}</option>`)
-    .join("");
-  document.getElementById("session-task").value = String(session.task_id);
+  renderSessionTaskPicker(session);
   const start = localDateTimeParts(session.started_at);
   const end = localDateTimeParts(session.ended_at);
   document.getElementById("session-start-date").value = start.date;
@@ -624,6 +954,7 @@ function openSessionEditor(sessionId) {
 
 function closeSessionEditor() {
   state.editingSessionId = null;
+  closeSessionTaskMenu();
   document.getElementById("session-dialog").close();
 }
 
@@ -734,6 +1065,49 @@ document.getElementById("task-form").addEventListener("submit", async (event) =>
 document.getElementById("timeline-reports").addEventListener("click", () => {
   showView("reports");
 });
+document.getElementById("bar-chart").addEventListener("pointermove", (event) => {
+  const segment = event.target.closest(".bar-segment");
+  if (!segment) {
+    hideChartTooltip();
+    return;
+  }
+  showChartTooltip(segment, event);
+});
+document.getElementById("bar-chart").addEventListener("pointerleave", hideChartTooltip);
+document.querySelectorAll("[data-report-range]").forEach((button) => {
+  button.addEventListener("click", async () => {
+    state.reportMode = button.dataset.reportRange;
+    state.reportDataKey = null;
+    await loadReportData(true);
+  });
+});
+document.getElementById("report-prev-period").addEventListener("click", async () => {
+  state.reportDate = reportModeStep(state.reportMode)(state.reportDate, -1);
+  state.reportDataKey = null;
+  await loadReportData(true);
+});
+document.getElementById("report-next-period").addEventListener("click", async () => {
+  state.reportDate = reportModeStep(state.reportMode)(state.reportDate, 1);
+  state.reportDataKey = null;
+  await loadReportData(true);
+});
+document.getElementById("report-current-reset").addEventListener("click", async () => {
+  state.reportDate = currentReportDateForMode(state.reportMode);
+  state.reportDataKey = null;
+  await loadReportData(true);
+});
+document.getElementById("report-current-period").addEventListener("click", async () => {
+  state.reportDate = currentReportDateForMode(state.reportMode);
+  state.reportDataKey = null;
+  await loadReportData(true);
+});
+document.getElementById("report-current-period").addEventListener("keydown", async (event) => {
+  if (!["Enter", " "].includes(event.key)) return;
+  event.preventDefault();
+  state.reportDate = currentReportDateForMode(state.reportMode);
+  state.reportDataKey = null;
+  await loadReportData(true);
+});
 document.getElementById("refresh-admin").addEventListener("click", loadAdminData);
 document.getElementById("timeline-date").addEventListener("click", () => {
   const picker = document.getElementById("timeline-date-picker");
@@ -785,6 +1159,21 @@ document.getElementById("archive-current-task").addEventListener("click", async 
   await reloadVisibleData();
 });
 document.getElementById("cancel-session-edit").addEventListener("click", closeSessionEditor);
+document.getElementById("session-task-button").addEventListener("click", () => {
+  const menu = document.getElementById("session-task-menu");
+  const isOpen = menu.classList.toggle("open");
+  document.getElementById("session-task-button").setAttribute("aria-expanded", String(isOpen));
+});
+document.getElementById("session-task-menu").addEventListener("click", (event) => {
+  const option = event.target.closest(".session-task-option");
+  if (!option) return;
+  setSessionTask(Number(option.dataset.taskId));
+});
+document.addEventListener("click", (event) => {
+  if (!document.getElementById("session-dialog").open) return;
+  if (event.target.closest(".session-task-field")) return;
+  closeSessionTaskMenu();
+});
 document.getElementById("session-start-date").addEventListener("input", updateSessionDurationPreview);
 document.getElementById("session-start-time").addEventListener("input", updateSessionDurationPreview);
 document.getElementById("session-end-date").addEventListener("input", updateSessionDurationPreview);

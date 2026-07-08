@@ -349,7 +349,8 @@ body.timeline-active #timeline-view .timeline-board {
   gap: 2px;
   margin-bottom: 0;
   padding: 4px;
-  width: fit-content;
+  width: max-content;
+  min-width: max-content;
   border: 1px solid var(--line-soft);
   border-radius: var(--radius);
   background: #202022;
@@ -364,6 +365,7 @@ body.timeline-active #timeline-view .timeline-board {
   border-radius: 6px;
   font-size: 12px;
   font-weight: 800;
+  white-space: nowrap;
   transition: background 160ms ease, color 160ms ease;
 }
 
@@ -384,7 +386,7 @@ body.timeline-active #timeline-view .timeline-board {
 .tasks-layout {
   min-height: 100vh;
   display: grid;
-  grid-template-columns: 320px minmax(0, 1fr);
+  grid-template-columns: 360px minmax(0, 1fr);
 }
 
 .tasks-rail {
@@ -568,6 +570,128 @@ body.timeline-active #timeline-view .timeline-board {
   grid-template-columns: minmax(320px, 1.2fr) minmax(280px, 0.8fr);
   gap: 20px;
   align-items: start;
+}
+
+#reports-view.view.active {
+  min-height: 100dvh;
+}
+
+@media (min-width: 821px) {
+  #reports-view.view.active {
+    padding: 0 16px 0 18px;
+  }
+
+  #reports-view .topbar {
+    height: 40px;
+    align-items: start;
+    margin: 0;
+  }
+
+  #reports-view .topbar > div:first-child {
+    order: 2;
+    margin-left: auto;
+  }
+
+  #reports-view .topbar h1,
+  #reports-view .eyebrow {
+    display: none;
+  }
+
+  #reports-view .segmented {
+    order: 1;
+  }
+
+  #reports-view .year-picker {
+    justify-content: flex-start;
+    gap: 18px;
+    margin: 24px 0 18px;
+  }
+
+  #reports-view .year-picker strong {
+    min-width: 0;
+    padding: 0;
+    background: transparent;
+    border: 0;
+    color: var(--text);
+    text-align: left;
+    font-size: 28px;
+  }
+
+  #reports-view .year-picker button {
+    width: 34px;
+    min-height: 34px;
+    padding: 0;
+    overflow: hidden;
+    position: relative;
+    color: var(--muted);
+  }
+
+  #reports-view .period-arrow {
+    display: grid;
+    place-items: center;
+    font-size: 34px;
+    line-height: 1;
+    font-weight: 450;
+  }
+
+  #reports-view .period-today::before {
+    content: "";
+    position: absolute;
+    inset: 11px;
+    border-radius: 50%;
+    background: var(--muted);
+  }
+
+  #reports-view .report-grid {
+    display: block;
+  }
+
+  #reports-view .report-grid > .panel:first-child {
+    position: relative;
+    border-bottom: 1px solid var(--line);
+    padding-bottom: 0;
+  }
+
+  #reports-view .report-grid > .panel:nth-child(2) {
+    display: none;
+  }
+
+  #reports-view .metric-row {
+    display: none;
+  }
+
+  #reports-view .bar-chart {
+    height: min(70dvh, 720px);
+    min-height: 460px;
+    border: 0;
+    border-radius: 0;
+    background:
+      repeating-linear-gradient(to bottom, transparent 0 178px, rgba(255, 255, 255, 0.035) 179px 180px),
+      var(--bg);
+    padding: 42px 30px 48px;
+    box-shadow: none;
+    align-items: end;
+  }
+
+  #reports-view .report-bar-wrap {
+    height: calc(min(70dvh, 720px) - 92px);
+    min-height: 368px;
+  }
+
+  #reports-view .report-bar {
+    width: min(180px, 74%);
+    border-radius: 4px 4px 0 0;
+  }
+
+  #reports-view .bar-total {
+    margin-bottom: 8px;
+    font-size: 13px;
+  }
+
+  #reports-view .bar-label {
+    bottom: -32px;
+    font-size: 12px;
+  }
 }
 
 .panel {
@@ -931,6 +1055,15 @@ body.timeline-active #timeline-view .timeline-board {
   font-weight: 850;
 }
 
+.year-picker button {
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+  padding: 14px 24px;
+}
+
 .year-picker strong {
   background: color-mix(in srgb, var(--blue), transparent 82%);
   border: 1px solid color-mix(in srgb, var(--blue), transparent 45%);
@@ -983,28 +1116,118 @@ body.timeline-active #timeline-view .timeline-board {
     repeating-linear-gradient(to top, transparent 0 84px, var(--line-soft) 85px 86px),
     var(--surface-2);
   display: grid;
-  grid-template-columns: repeat(12, 1fr);
+  grid-template-columns: repeat(var(--bar-count, 12), minmax(0, 1fr));
   gap: 8px;
   align-items: end;
-  padding: 16px 12px 0;
+  padding: 34px 12px 34px;
   box-shadow: var(--shadow-sm);
 }
 
-.month-bar {
-  min-height: 1px;
-  border-radius: 6px 6px 0 0;
-  background: var(--blue);
+.report-bar-wrap {
+  height: 210px;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-direction: column;
   position: relative;
 }
 
-.month-bar::after {
-  content: attr(data-month);
+.report-bar {
+  width: min(64px, 100%);
+  min-height: 1px;
+  border-radius: 6px 6px 0 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column-reverse;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.04);
+}
+
+.bar-segment {
+  display: block;
+  width: 100%;
+  min-height: 2px;
+}
+
+.bar-total {
+  position: relative;
+  margin-bottom: 8px;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 850;
+  white-space: nowrap;
+}
+
+.bar-label {
   position: absolute;
   left: 50%;
-  bottom: -26px;
+  bottom: -28px;
   transform: translateX(-50%);
   color: var(--muted);
   font-size: 12px;
+  font-weight: 850;
+  line-height: 1.1;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.bar-label span {
+  display: block;
+  margin-top: 3px;
+}
+
+.bar-chart[data-range="month"] {
+  gap: 4px;
+}
+
+.bar-chart[data-range="month"] .bar-label {
+  font-size: 10px;
+}
+
+.bar-chart[data-range="day"] {
+  gap: 5px;
+}
+
+.bar-chart[data-range="day"] .bar-label {
+  font-size: 10px;
+}
+
+.chart-tooltip {
+  position: fixed;
+  z-index: 20;
+  min-width: 116px;
+  max-width: 220px;
+  padding: 12px 14px;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 14px;
+  background: rgba(35, 35, 37, 0.96);
+  color: var(--text);
+  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.38);
+  pointer-events: none;
+  opacity: 0;
+  transform: translateY(4px);
+  transition: opacity 120ms ease, transform 120ms ease;
+}
+
+.chart-tooltip.visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.chart-tooltip strong,
+.chart-tooltip span {
+  display: block;
+  line-height: 1.2;
+}
+
+.chart-tooltip strong {
+  font-size: 16px;
+  font-weight: 850;
+}
+
+.chart-tooltip span {
+  margin-top: 5px;
+  font-size: 15px;
   font-weight: 850;
 }
 
@@ -1036,8 +1259,18 @@ body.timeline-active #timeline-view .timeline-board {
   height: 6px;
   border-radius: 99px;
   background: var(--surface-3);
-  margin-top: 8px;
   overflow: hidden;
+}
+
+.progress-line {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  margin-top: 8px;
+  color: var(--muted-2);
+  font-size: 12px;
+  font-weight: 750;
 }
 
 .progress-fill {
@@ -1051,7 +1284,38 @@ body.timeline-active #timeline-view .timeline-board {
 }
 
 .session-row {
-  grid-template-columns: 92px 4px minmax(0, 1fr) auto;
+  grid-template-columns: 92px 4px minmax(0, 1fr) auto auto;
+}
+
+.session-day-group {
+  display: grid;
+  gap: 0;
+}
+
+.session-day-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 16px;
+  padding: 18px 0 10px;
+  color: var(--muted);
+  font-size: 18px;
+  font-weight: 760;
+}
+
+.session-day-heading span::first-letter {
+  text-transform: uppercase;
+}
+
+.session-day-heading strong {
+  color: var(--muted-2);
+  font-size: 18px;
+  font-weight: 850;
+}
+
+.session-day-list {
+  display: grid;
+  gap: 1px;
 }
 
 .session-times {
@@ -1076,6 +1340,61 @@ body.timeline-active #timeline-view .timeline-board {
   color: var(--muted-2);
   font-size: 17px;
   font-style: italic;
+}
+
+@media (min-width: 821px) {
+  .sessions-panel {
+    margin-top: 0;
+    padding-bottom: 40px;
+  }
+
+  .sessions-panel .panel-heading {
+    display: none;
+  }
+
+  #session-list {
+    gap: 0;
+  }
+
+  .sessions-panel .session-row {
+    min-height: 64px;
+    border: 0;
+    border-top: 1px solid rgba(255, 255, 255, 0.045);
+    border-radius: 0;
+    background: transparent;
+    grid-template-columns: 86px 3px minmax(220px, 1fr) 70px;
+    padding: 0 18px 0 34px;
+  }
+
+  .sessions-panel .session-row:hover {
+    background: rgba(255, 255, 255, 0.035);
+    border-color: rgba(255, 255, 255, 0.06);
+  }
+
+  .session-times {
+    justify-items: end;
+    gap: 2px;
+    font-size: 12px;
+  }
+
+  .session-color {
+    height: 44px;
+    width: 3px;
+  }
+
+  .session-title {
+    color: var(--text);
+    font-size: 15px;
+  }
+
+  .session-notes {
+    display: block;
+    margin-top: 4px;
+    color: var(--muted-2);
+    font-size: 14px;
+    font-style: italic;
+    line-height: 1.2;
+  }
 }
 
 .settings-panel {
@@ -1288,6 +1607,7 @@ dialog::backdrop {
   grid-template-columns: 110px minmax(0, 1fr);
   align-items: center;
   gap: 14px;
+  position: relative;
 }
 
 .session-field-row select {
@@ -1295,6 +1615,99 @@ dialog::backdrop {
   text-align: right;
   font-size: 20px;
   font-weight: 850;
+}
+
+.native-session-select {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.session-task-button {
+  min-width: 0;
+  min-height: 50px;
+  border: 0;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.045);
+  color: var(--text);
+  display: grid;
+  grid-template-columns: 12px minmax(0, 1fr) 20px;
+  align-items: center;
+  gap: 10px;
+  padding: 0 12px;
+  font-size: 20px;
+  font-weight: 850;
+  text-align: left;
+}
+
+.task-picker-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--task-color, var(--blue));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--task-color, var(--blue)), transparent 82%);
+}
+
+.task-picker-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.task-picker-chevron {
+  color: var(--muted);
+  text-align: center;
+}
+
+.session-task-menu {
+  position: absolute;
+  right: 20px;
+  top: calc(100% + 8px);
+  z-index: 30;
+  width: min(360px, calc(100% - 40px));
+  max-height: 260px;
+  overflow: auto;
+  padding: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 14px;
+  background: rgba(35, 35, 38, 0.98);
+  box-shadow: 0 22px 60px rgba(0, 0, 0, 0.42);
+  display: none;
+}
+
+.session-task-menu.open {
+  display: grid;
+  gap: 4px;
+}
+
+.session-task-option {
+  min-height: 48px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--text);
+  display: grid;
+  grid-template-columns: 12px minmax(0, 1fr) 24px;
+  align-items: center;
+  gap: 12px;
+  padding: 0 12px;
+  font-size: 18px;
+  font-weight: 800;
+  text-align: left;
+}
+
+.session-task-option:hover,
+.session-task-option.selected {
+  background: rgba(255, 255, 255, 0.075);
+}
+
+.task-picker-check {
+  color: var(--blue);
+  font-size: 18px;
+  text-align: right;
 }
 
 .session-notes-field {
@@ -1482,7 +1895,7 @@ dialog::backdrop {
 
   .nav {
     height: 100%;
-    grid-template-columns: repeat(5, 1fr);
+    grid-template-columns: repeat(4, 1fr);
     gap: 0;
   }
 
@@ -1576,15 +1989,308 @@ dialog::backdrop {
 
   .task-tabs {
     width: 100%;
+    min-width: 0;
+    gap: 3px;
+    padding: 3px;
+    border: 1px solid rgba(255, 255, 255, 0.07);
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.045);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.045);
   }
 
   .task-tab {
-    flex: 1;
-    padding: 0 8px;
+    flex: 1 1 0;
+    min-width: 0;
+    min-height: 36px;
+    padding: 0 6px;
+    border-radius: 999px;
+    color: var(--muted);
+    font-size: clamp(11px, 3.2vw, 13px);
+    white-space: nowrap;
+  }
+
+  .task-tab.active {
+    background: rgba(255, 255, 255, 0.13);
+    color: var(--text);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.12),
+      0 8px 20px rgba(0, 0, 0, 0.18);
   }
 
   .report-grid {
     grid-template-columns: 1fr;
+  }
+
+  #reports-view.view.active {
+    padding: 18px 0 8px;
+  }
+
+  #reports-view .topbar {
+    justify-content: center;
+    margin-bottom: 16px;
+  }
+
+  #reports-view .topbar > div:first-child {
+    display: none;
+  }
+
+  #reports-view .segmented {
+    width: min(368px, calc(100vw - 40px));
+    margin: 0 auto;
+    background: rgba(255, 255, 255, 0.045);
+    border: 1px solid rgba(255, 255, 255, 0.07);
+    border-radius: 999px;
+    padding: 3px;
+    gap: 3px;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.045);
+  }
+
+  #reports-view .segmented button {
+    flex: 1;
+    min-height: 36px;
+    padding: 0;
+    border-radius: 999px;
+    color: var(--muted);
+    font-size: 14px;
+    font-weight: 800;
+  }
+
+  #reports-view .segmented button + button {
+    border-left: 0;
+  }
+
+  #reports-view .segmented .active {
+    background: rgba(255, 255, 255, 0.13);
+    color: var(--text);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.12),
+      0 8px 20px rgba(0, 0, 0, 0.18);
+  }
+
+  #reports-view .year-picker {
+    margin: 14px 0 18px;
+    padding: 0 20px;
+    display: grid;
+    grid-template-columns: 42px minmax(0, 1fr) 42px;
+    justify-content: stretch;
+    align-items: center;
+    column-gap: 10px;
+    font-size: 23px;
+  }
+
+  #reports-view .year-picker button {
+    width: 100%;
+    min-height: 46px;
+    padding: 0;
+    color: var(--text);
+    overflow: hidden;
+    position: relative;
+  }
+
+  #reports-view .year-picker strong {
+    order: 2;
+    min-width: 0;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.055);
+    border: 1px solid rgba(255, 255, 255, 0.075);
+    color: var(--text);
+    padding: 11px 12px;
+    text-align: center;
+    white-space: nowrap;
+    cursor: pointer;
+    font-size: clamp(18px, 5vw, 25px);
+    font-weight: 850;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  }
+
+  #reports-view .period-arrow {
+    display: grid;
+    place-items: center;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.035);
+    color: color-mix(in srgb, var(--muted), var(--text) 18%);
+    font-size: 34px;
+    line-height: 1;
+    font-weight: 420;
+    transition: background 160ms ease, color 160ms ease;
+  }
+
+  #reports-view .period-prev {
+    order: 1;
+  }
+
+  #reports-view .period-next {
+    order: 3;
+  }
+
+  #reports-view .period-today {
+    display: none;
+  }
+
+  #reports-view .report-grid {
+    gap: 26px;
+  }
+
+  #reports-view .report-grid > .panel:first-child {
+    padding: 0 20px;
+  }
+
+  #reports-view .metric-row {
+    margin: 0 0 16px;
+  }
+
+  #reports-view .metric-row .label {
+    font-size: 14px;
+  }
+
+  #reports-view .metric-row strong {
+    font-size: 31px;
+    font-weight: 500;
+  }
+
+  #reports-view .bar-chart {
+    height: 232px;
+    border: 0;
+    border-radius: 0;
+    background:
+      repeating-linear-gradient(to top, transparent 0 92px, rgba(255, 255, 255, 0.16) 93px 94px),
+      transparent;
+    padding: 28px 10px 28px;
+    box-shadow: none;
+  }
+
+  #reports-view .report-bar-wrap {
+    height: 176px;
+  }
+
+  #reports-view .report-bar {
+    width: min(40px, 82%);
+    border-radius: 5px 5px 0 0;
+  }
+
+  #reports-view .bar-total {
+    font-size: 11px;
+    margin-bottom: 5px;
+  }
+
+  #reports-view .bar-label {
+    bottom: -24px;
+    font-size: 10px;
+  }
+
+  #reports-view .report-grid > .panel:nth-child(2) {
+    margin: 0 14px;
+    border-radius: 11px;
+    background: var(--surface);
+    overflow: hidden;
+  }
+
+  #reports-view .report-grid > .panel:nth-child(2) .panel-heading {
+    margin: 0;
+    padding: 0 10px 10px;
+    background: var(--bg);
+    font-size: 17px;
+    font-weight: 650;
+  }
+
+  #reports-view .task-breakdown {
+    gap: 0;
+  }
+
+  #reports-view .report-grid .breakdown-row {
+    min-height: 68px;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    grid-template-columns: 34px minmax(0, 1fr) auto;
+    padding: 0 16px;
+  }
+
+  #reports-view .report-grid .breakdown-row + .breakdown-row {
+    border-top: 1px solid rgba(255, 255, 255, 0.055);
+  }
+
+  #reports-view .check-dot {
+    width: 28px;
+    height: 28px;
+  }
+
+  #reports-view .task-name {
+    font-size: 20px;
+  }
+
+  #reports-view .task-time {
+    color: var(--text);
+    font-size: 20px;
+  }
+
+  #reports-view .progress-line {
+    grid-template-columns: minmax(0, 64px) auto;
+    gap: 8px;
+    margin-top: 7px;
+    font-size: 12px;
+  }
+
+  #reports-view .progress-track {
+    height: 5px;
+  }
+
+  #reports-view .sessions-panel {
+    margin: 28px 14px 0;
+  }
+
+  #reports-view .sessions-panel .panel-heading {
+    margin: 0 0 8px;
+    color: var(--text);
+    font-size: 32px;
+    text-transform: none;
+  }
+
+  #reports-view #session-list {
+    gap: 26px;
+  }
+
+  #reports-view .session-day-heading {
+    padding: 0 0 8px;
+    font-size: 15px;
+    text-transform: uppercase;
+  }
+
+  #reports-view .session-day-list {
+    overflow: hidden;
+    border-radius: 11px;
+    background: var(--surface);
+  }
+
+  #reports-view .sessions-panel .session-row {
+    min-height: 84px;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    grid-template-columns: 78px 3px minmax(0, 1fr) auto;
+    gap: 14px;
+    padding: 0 14px;
+  }
+
+  #reports-view .sessions-panel .session-row + .session-row {
+    border-top: 1px solid rgba(255, 255, 255, 0.055);
+  }
+
+  #reports-view .session-times {
+    font-size: 15px;
+  }
+
+  #reports-view .session-color {
+    width: 3px;
+    height: 64px;
+  }
+
+  #reports-view .session-title {
+    font-size: 16px;
+  }
+
+  #reports-view .session-notes {
+    font-size: 19px;
   }
 
   .task-row {
@@ -1669,5 +2375,15 @@ dialog::backdrop {
 
   .session-field-row {
     grid-template-columns: 72px minmax(0, 1fr);
+  }
+
+  .session-task-button {
+    font-size: 18px;
+  }
+
+  .session-task-menu {
+    left: 14px;
+    right: 14px;
+    width: auto;
   }
 }

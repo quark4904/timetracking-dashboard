@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Timetracking Dashboard</title>
-    <link rel="stylesheet" href="/static/styles.css?v=20260708-5" />
+    <link rel="stylesheet" href="/static/styles.css?v=20260708-16" />
   </head>
   <body>
     <div class="app-shell">
@@ -118,21 +118,22 @@
         <section class="view" id="reports-view" aria-labelledby="reports-title">
           <header class="topbar">
             <div>
-              <div class="eyebrow">Year overview</div>
+              <div class="eyebrow" id="reports-eyebrow">Year overview</div>
               <h1 id="reports-title">Reports</h1>
             </div>
             <div class="segmented" aria-label="Report range">
-              <button>Day</button>
-              <button>Week</button>
-              <button>Month</button>
-              <button class="active">Year</button>
+              <button data-report-range="day">Day</button>
+              <button data-report-range="week">Week</button>
+              <button data-report-range="month">Month</button>
+              <button class="active" data-report-range="year">Year</button>
             </div>
           </header>
 
-          <div class="year-picker">
-            <span>2025</span>
-            <strong>2026</strong>
-            <span>2027</span>
+          <div class="year-picker" id="report-period-picker">
+            <button class="period-arrow period-prev" type="button" id="report-prev-period" aria-label="Previous period">‹</button>
+            <button class="period-today" type="button" id="report-current-reset" aria-label="Current period"></button>
+            <button class="period-arrow period-next" type="button" id="report-next-period" aria-label="Next period">›</button>
+            <strong id="report-current-period" role="button" tabindex="0" title="Current period">2026</strong>
           </div>
 
           <div class="report-grid">
@@ -143,15 +144,15 @@
                   <strong id="total-time">0:00</strong>
                 </div>
                 <div>
-                  <span class="label">Monthly Avg.</span>
-                  <strong id="monthly-average">0:00</strong>
+                  <span class="label" id="average-label">Monthly Avg.</span>
+                  <strong id="period-average">0:00</strong>
                 </div>
               </div>
               <div class="bar-chart" id="bar-chart"></div>
             </section>
             <section class="panel">
               <div class="panel-heading">
-                <span>By Tasks</span>
+                <span>By Tasks And Folders</span>
               </div>
               <div class="task-breakdown" id="task-breakdown"></div>
             </section>
@@ -278,10 +279,12 @@
           </div>
         </section>
 
-        <label class="session-field-row">
+        <div class="session-field-row session-task-field">
           <span>Task</span>
-          <select id="session-task"></select>
-        </label>
+          <select class="native-session-select" id="session-task" tabindex="-1" aria-hidden="true"></select>
+          <button class="session-task-button" id="session-task-button" type="button" aria-haspopup="listbox" aria-expanded="false"></button>
+          <div class="session-task-menu" id="session-task-menu" role="listbox"></div>
+        </div>
 
         <label class="session-notes-field">
           <span>Notes</span>
@@ -303,6 +306,11 @@
       </form>
     </dialog>
 
-    <script src="/static/app.js?v=20260708-5"></script>
+    <div class="chart-tooltip" id="chart-tooltip" role="tooltip" aria-hidden="true">
+      <strong></strong>
+      <span></span>
+    </div>
+
+    <script src="/static/app.js?v=20260708-16"></script>
   </body>
 </html>
