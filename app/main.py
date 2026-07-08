@@ -81,10 +81,11 @@ def reorder_tasks(payload: TaskReorder) -> list[dict]:
     return tasks
 
 
-@app.delete("/api/tasks/{task_id}", status_code=204)
-def delete_task(task_id: int) -> None:
+@app.delete("/api/tasks/{task_id}")
+def delete_task(task_id: int):
     if not repository.delete_task(task_id):
         raise HTTPException(status_code=404, detail="Task not found")
+    return {"ok": True}
 
 
 @app.post("/api/tasks/{task_id}/start", status_code=201)
