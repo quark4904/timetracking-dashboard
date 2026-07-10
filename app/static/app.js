@@ -721,9 +721,15 @@ function renderTimeline() {
     const durationHours = Math.max(0.35, (end - start) / 3600000);
     const top = timelinePadding + Math.max(0, Math.min(timelineHeight - 28, (startLocal - startHour) * pxPerHour));
     const height = Math.max(28, Math.min(contentHeight - timelinePadding - top, durationHours * pxPerHour));
+    const notes = (session.notes || "").trim();
+    const title = notes ? `${session.task_name}\n${notes}` : session.task_name;
     return `
-      <button class="timeline-event session-edit-trigger" data-session-id="${session.id}" style="top:${top}px;height:${height}px;--task-color:${session.task_color}">
-        ${escapeHtml(session.task_name)} <span>${formatDuration(secondsBetween(session.started_at, session.ended_at))}</span>
+      <button class="timeline-event session-edit-trigger" data-session-id="${session.id}" title="${escapeHtml(title)}" style="top:${top}px;height:${height}px;--task-color:${session.task_color}">
+        <span class="timeline-event-header">
+          <strong class="timeline-event-title">${escapeHtml(session.task_name)}</strong>
+          <span class="timeline-event-notes">${escapeHtml(notes)}</span>
+          <span class="timeline-event-duration">${formatDuration(secondsBetween(session.started_at, session.ended_at))}</span>
+        </span>
       </button>
     `;
   }).join("");
