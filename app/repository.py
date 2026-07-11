@@ -1,23 +1,28 @@
 from __future__ import annotations
 
 import os
+import re
 import sqlite3
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Iterator
-from zoneinfo import ZoneInfo
 
 DB_PATH = Path(os.getenv("TIMETRACKING_DB_PATH", "data/timetracking.db"))
-KST = ZoneInfo("Asia/Seoul")
+COLOR_PATTERN = re.compile(r"^#[0-9a-fA-F]{6}$")
+
+
+class ActiveSessionConflictError(Exception):
+    pass
 
 
 @contextmanager
 def connect() -> Iterator[sqlite3.Connection]:
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(DB_PATH, timeout=5)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
+    conn.execute("PRAGMA busy_timeout = 5000")
     try:
         yield conn
         conn.commit()
@@ -38,13 +43,6 @@ def parse_stored_datetime(value: str | None) -> datetime | None:
     return parsed
 
 
-def to_kst_display(value: str | None) -> str | None:
-    parsed = parse_stored_datetime(value)
-    if parsed is None:
-        return None
-    return parsed.astimezone(KST).strftime("%Y-%m-%d %H:%M:%S KST")
-
-
 def duration_seconds(started_at: str, ended_at: str | None) -> int:
     started = parse_stored_datetime(started_at)
     ended = parse_stored_datetime(ended_at) or datetime.now(timezone.utc)
@@ -54,14 +52,32 @@ def duration_seconds(started_at: str, ended_at: str | None) -> int:
 
 
 def normalize_to_utc(value: str | None) -> str | None:
-    parsed = parse_stored_datetime(value)
-    if parsed is None:
+    if value is None:
         return None
+    parsed = datetime.fromisoformat(value)
+    if parsed.tzinfo is None or parsed.utcoffset() is None:
+        raise ValueError("datetime values must include a timezone")
     return parsed.astimezone(timezone.utc).isoformat()
+
+
+def normalize_task_name(name: str) -> str:
+    normalized = name.strip()
+    if not normalized:
+        raise ValueError("name must not be blank")
+    if len(normalized) > 80:
+        raise ValueError("name must be 80 characters or fewer")
+    return normalized
+
+
+def validate_color(color: str) -> str:
+    if not COLOR_PATTERN.fullmatch(color):
+        raise ValueError("color must be a 6-digit hex value")
+    return color
 
 
 def init_db() -> None:
     with connect() as conn:
+        conn.execute("PRAGMA journal_mode = WAL")
         conn.executescript(
             """
             CREATE TABLE IF NOT EXISTS tasks (
@@ -98,6 +114,29 @@ def init_db() -> None:
             WHERE sort_order = 0
             """
         )
+        active_sessions = conn.execute(
+            "SELECT id, started_at FROM sessions WHERE ended_at IS NULL"
+        ).fetchall()
+        if len(active_sessions) > 1:
+            latest = max(
+                active_sessions,
+                key=lambda row: (parse_stored_datetime(row["started_at"]), row["id"]),
+            )
+            conn.execute(
+                """
+                UPDATE sessions
+                SET ended_at = ?
+                WHERE ended_at IS NULL AND id != ?
+                """,
+                (latest["started_at"], latest["id"]),
+            )
+        conn.execute(
+            """
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_sessions_single_active
+            ON sessions ((1))
+            WHERE ended_at IS NULL
+            """
+        )
 
 
 def row_to_dict(row: sqlite3.Row) -> dict:
@@ -127,11 +166,13 @@ def list_tasks(include_archived: bool = False) -> list[dict]:
 
 
 def create_task(name: str, color: str) -> dict:
+    normalized_name = normalize_task_name(name)
+    validated_color = validate_color(color)
     with connect() as conn:
         next_order = conn.execute("SELECT COALESCE(MAX(sort_order), 0) + 1 FROM tasks").fetchone()[0]
         cursor = conn.execute(
             "INSERT INTO tasks (name, color, sort_order, created_at) VALUES (?, ?, ?, ?)",
-            (name.strip(), color, next_order, utc_now()),
+            (normalized_name, validated_color, next_order, utc_now()),
         )
         return row_to_dict(conn.execute("SELECT * FROM tasks WHERE id = ?", (cursor.lastrowid,)).fetchone())
 
@@ -147,10 +188,10 @@ def update_task(
     values = []
     if name is not None:
         fields.append("name = ?")
-        values.append(name.strip())
+        values.append(normalize_task_name(name))
     if color is not None:
         fields.append("color = ?")
-        values.append(color)
+        values.append(validate_color(color))
     if archived is not None:
         fields.append("archived = ?")
         values.append(1 if archived else 0)
@@ -167,15 +208,16 @@ def update_task(
 
 
 def reorder_tasks(task_ids: list[int]) -> list[dict] | None:
-    if not task_ids:
-        return list_tasks(include_archived=True)
     with connect() as conn:
+        total = conn.execute("SELECT COUNT(*) FROM tasks").fetchone()[0]
+        if not task_ids:
+            return [] if total == 0 else None
         placeholders = ",".join("?" for _ in task_ids)
         found = conn.execute(
             f"SELECT COUNT(*) FROM tasks WHERE id IN ({placeholders})",
             task_ids,
         ).fetchone()[0]
-        if found != len(set(task_ids)):
+        if found != total or len(task_ids) != total or len(set(task_ids)) != total:
             return None
         for index, task_id in enumerate(task_ids, start=1):
             conn.execute("UPDATE tasks SET sort_order = ? WHERE id = ?", (index, task_id))
@@ -196,13 +238,15 @@ def get_task(task_id: int) -> dict | None:
 
 def start_session(task_id: int) -> dict | None:
     with connect() as conn:
+        conn.execute("BEGIN IMMEDIATE")
         task = conn.execute("SELECT * FROM tasks WHERE id = ? AND archived = 0", (task_id,)).fetchone()
         if not task:
             return None
-        conn.execute("UPDATE sessions SET ended_at = ? WHERE ended_at IS NULL", (utc_now(),))
+        started_at = utc_now()
+        conn.execute("UPDATE sessions SET ended_at = ? WHERE ended_at IS NULL", (started_at,))
         cursor = conn.execute(
             "INSERT INTO sessions (task_id, started_at) VALUES (?, ?)",
-            (task_id, utc_now()),
+            (task_id, started_at),
         )
         return get_session(cursor.lastrowid, conn)
 
@@ -219,10 +263,18 @@ def create_session(
         raise ValueError("started_at is required")
     if ended_utc is not None and duration_seconds(started_utc, ended_utc) <= 0:
         raise ValueError("ended_at must be after started_at")
+    if ended_utc is None and parse_stored_datetime(started_utc) > datetime.now(timezone.utc):
+        raise ValueError("an active session cannot start in the future")
     with connect() as conn:
+        if ended_utc is None:
+            conn.execute("BEGIN IMMEDIATE")
         task = conn.execute("SELECT id FROM tasks WHERE id = ?", (task_id,)).fetchone()
         if not task:
             return None
+        if ended_utc is None and conn.execute(
+            "SELECT 1 FROM sessions WHERE ended_at IS NULL"
+        ).fetchone():
+            raise ActiveSessionConflictError("another session is already active")
         cursor = conn.execute(
             """
             INSERT INTO sessions (task_id, started_at, ended_at, notes)
@@ -235,7 +287,9 @@ def create_session(
 
 def stop_active_session() -> dict | None:
     with connect() as conn:
-        row = conn.execute("SELECT * FROM sessions WHERE ended_at IS NULL LIMIT 1").fetchone()
+        row = conn.execute(
+            "SELECT * FROM sessions WHERE ended_at IS NULL ORDER BY started_at DESC, id DESC LIMIT 1"
+        ).fetchone()
         if not row:
             return None
         conn.execute("UPDATE sessions SET ended_at = ? WHERE id = ?", (utc_now(), row["id"]))
@@ -244,7 +298,9 @@ def stop_active_session() -> dict | None:
 
 def get_active_session() -> dict | None:
     with connect() as conn:
-        row = conn.execute("SELECT id FROM sessions WHERE ended_at IS NULL LIMIT 1").fetchone()
+        row = conn.execute(
+            "SELECT id FROM sessions WHERE ended_at IS NULL ORDER BY started_at DESC, id DESC LIMIT 1"
+        ).fetchone()
         return get_session(row["id"], conn) if row else None
 
 
@@ -261,13 +317,22 @@ def update_session(
         raise ValueError("started_at is required")
     if ended_utc is not None and duration_seconds(started_utc, ended_utc) <= 0:
         raise ValueError("ended_at must be after started_at")
+    if ended_utc is None and parse_stored_datetime(started_utc) > datetime.now(timezone.utc):
+        raise ValueError("an active session cannot start in the future")
     with connect() as conn:
+        if ended_utc is None:
+            conn.execute("BEGIN IMMEDIATE")
         task = conn.execute("SELECT id FROM tasks WHERE id = ?", (task_id,)).fetchone()
         if not task:
             return None
         session = conn.execute("SELECT id FROM sessions WHERE id = ?", (session_id,)).fetchone()
         if not session:
             return None
+        if ended_utc is None and conn.execute(
+            "SELECT 1 FROM sessions WHERE ended_at IS NULL AND id != ?",
+            (session_id,),
+        ).fetchone():
+            raise ActiveSessionConflictError("another session is already active")
         conn.execute(
             """
             UPDATE sessions
@@ -288,8 +353,10 @@ def delete_session(session_id: int) -> bool:
 def get_session(session_id: int, conn: sqlite3.Connection | None = None) -> dict | None:
     close_conn = conn is None
     if conn is None:
-        conn = sqlite3.connect(DB_PATH)
+        conn = sqlite3.connect(DB_PATH, timeout=5)
         conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA foreign_keys = ON")
+        conn.execute("PRAGMA busy_timeout = 5000")
     try:
         row = conn.execute(
             """
@@ -317,8 +384,8 @@ def list_sessions(start: str | None = None, end: str | None = None) -> list[dict
     where = ""
     params: tuple[str, str] | tuple[()] = ()
     if start_utc is not None and end_utc is not None:
-        where = "WHERE s.ended_at IS NULL OR (s.started_at >= ? AND s.started_at < ?)"
-        params = (start_utc, end_utc)
+        where = "WHERE s.started_at < ? AND (s.ended_at IS NULL OR s.ended_at > ?)"
+        params = (end_utc, start_utc)
 
     with connect() as conn:
         rows = conn.execute(
@@ -335,20 +402,8 @@ def list_sessions(start: str | None = None, end: str | None = None) -> list[dict
 
 
 def list_admin_db() -> dict:
-    sessions = list_sessions()
-    tasks = list_tasks(include_archived=True)
     return {
         "db_path": str(DB_PATH),
         "storage_timezone": "UTC",
         "display_timezone": "Asia/Seoul",
-        "tasks": tasks,
-        "sessions": [
-            {
-                **session,
-                "started_at_kst": to_kst_display(session["started_at"]),
-                "ended_at_kst": to_kst_display(session["ended_at"]),
-                "duration_seconds": duration_seconds(session["started_at"], session["ended_at"]),
-            }
-            for session in sessions
-        ],
     }

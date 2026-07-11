@@ -1,12 +1,13 @@
 const state = {
   tasks: [],
   sessions: [],
+  taskSessions: [],
   activeSession: null,
   reportSessions: [],
   admin: null,
   sessionsMonth: null,
   reportMode: "month",
-  reportDate: dateKey(new Date()),
+  reportDate: null,
   reportDataKey: null,
   filter: "active",
   activeView: "tasks",
@@ -16,7 +17,7 @@ const state = {
   editingTaskId: null,
   editingTaskColor: "#0a84ff",
   newTaskColor: "#4da1ff",
-  timelineDate: dateKey(new Date()),
+  timelineDate: null,
   timelineShouldCenterNow: true,
 };
 
@@ -37,6 +38,8 @@ const kstPartsFmt = new Intl.DateTimeFormat("en", {
   second: "2-digit",
   hourCycle: "h23",
 });
+state.reportDate = kstDateKey(new Date());
+state.timelineDate = state.reportDate;
 const monthNames = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
 const weekdayNames = ["SUNDAY", "MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY"];
 const fullMonthDayFmt = new Intl.DateTimeFormat("en", { month: "long", day: "numeric" });
@@ -55,6 +58,17 @@ const icons = {
 
 function secondsBetween(start, end) {
   return Math.max(0, Math.floor((new Date(end || Date.now()) - new Date(start)) / 1000));
+}
+
+function kstDateBoundary(date, hour = 0) {
+  return new Date(`${date}T${String(hour).padStart(2, "0")}:00:00+09:00`);
+}
+
+function overlapSeconds(session, rangeStart, rangeEnd) {
+  const start = Math.max(new Date(session.started_at).getTime(), rangeStart.getTime());
+  const sessionEnd = session.ended_at ? new Date(session.ended_at).getTime() : Date.now();
+  const end = Math.min(sessionEnd, rangeEnd.getTime());
+  return Math.max(0, Math.floor((end - start) / 1000));
 }
 
 function formatDuration(seconds) {
@@ -97,13 +111,16 @@ async function api(path, options = {}) {
 }
 
 async function loadData() {
-  const [tasks, sessions, active] = await Promise.all([
+  const todayRange = monthRangeForDateKey(kstDateKey(new Date()));
+  const [tasks, sessions, taskSessions, active] = await Promise.all([
     api("/api/tasks?include_archived=true"),
     fetchTimelineSessions(true),
+    api(sessionsPathForRange(todayRange.start, todayRange.end)),
     fetchActiveSession(),
   ]);
   state.tasks = tasks;
   state.sessions = sessions;
+  state.taskSessions = taskSessions;
   state.activeSession = active;
   render();
 }
@@ -179,7 +196,7 @@ function taskTotal(task) {
 
 function render() {
   syncActiveViewClass();
-  document.getElementById("today-label").textContent = fmt.format(new Date());
+  document.getElementById("today-label").textContent = fmt.format(dateFromKey(kstDateKey(new Date())));
   document.getElementById("timeline-date").textContent = fmt.format(dateFromKey(state.timelineDate));
   document.getElementById("timeline-date-picker").value = state.timelineDate;
   renderActiveSessionControl();
@@ -257,22 +274,9 @@ function dateFromKey(value) {
   return new Date(year, month - 1, day);
 }
 
-function timeKey(value) {
-  return `${String(value.getHours()).padStart(2, "0")}:${String(value.getMinutes()).padStart(2, "0")}`;
-}
-
-function kstHourFraction(value) {
-  const parts = kstParts(value);
-  return parts.hour + Number(parts.minute) / 60;
-}
-
 function centeredTimelineScrollTop(board, lineTop, contentHeight) {
   const maxScrollTop = Math.max(0, contentHeight - board.clientHeight);
   return Math.max(0, Math.min(maxScrollTop, lineTop - board.clientHeight / 2));
-}
-
-function kstMonthIndex(value) {
-  return Number(kstParts(value).month) - 1;
 }
 
 function addDays(value, amount) {
@@ -346,7 +350,7 @@ function reportPeriodLabel(mode, value, compact = false) {
 }
 
 function currentReportDateForMode(mode) {
-  const today = dateKey(new Date());
+  const today = kstDateKey(new Date());
   if (mode === "week") return startOfWeekKey(today);
   if (mode === "month") {
     const date = dateFromKey(today);
@@ -377,16 +381,13 @@ function averageLabelText(mode) {
   }[mode];
 }
 
-function reportSessionInRange(session, range) {
-  const key = kstDateKey(session.started_at);
-  return key >= range.start && key < range.end;
-}
-
 function createReportBuckets(mode, range) {
   if (mode === "day") {
     return Array.from({ length: 24 }, (_, index) => ({
       key: String(index).padStart(2, "0"),
       label: index % 3 === 0 ? String(index).padStart(2, "0") : "",
+      start: kstDateBoundary(range.start, index),
+      end: index === 23 ? kstDateBoundary(range.end) : kstDateBoundary(range.start, index + 1),
       total: 0,
       tasks: new Map(),
     }));
@@ -398,6 +399,8 @@ function createReportBuckets(mode, range) {
       return {
         key,
         label: `${weekdayNames[date.getDay()]}<span>${String(date.getMonth() + 1).padStart(2, "0")}/${String(date.getDate()).padStart(2, "0")}</span>`,
+        start: kstDateBoundary(key),
+        end: kstDateBoundary(addDays(key, 1)),
         total: 0,
         tasks: new Map(),
       };
@@ -413,26 +416,26 @@ function createReportBuckets(mode, range) {
       return {
         key,
         label: String(date.getDate()),
+        start: kstDateBoundary(key),
+        end: kstDateBoundary(addDays(key, 1)),
         total: 0,
         tasks: new Map(),
       };
     });
   }
-  return monthNames.map((label, index) => ({
-    key: String(index),
-    label,
-    total: 0,
-    tasks: new Map(),
-  }));
-}
-
-function reportBucketIndex(mode, session, range) {
-  const parts = kstParts(session.started_at);
-  if (mode === "day") return parts.hour;
-  if (mode === "week" || mode === "month") {
-    return Math.floor((dateFromKey(kstDateKey(session.started_at)) - dateFromKey(range.start)) / 86400000);
-  }
-  return Number(parts.month) - 1;
+  const year = Number(range.start.slice(0, 4));
+  return monthNames.map((label, index) => {
+    const start = `${year}-${String(index + 1).padStart(2, "0")}-01`;
+    const end = index === 11 ? `${year + 1}-01-01` : `${year}-${String(index + 2).padStart(2, "0")}-01`;
+    return {
+      key: String(index),
+      label,
+      start: kstDateBoundary(start),
+      end: kstDateBoundary(end),
+      total: 0,
+      tasks: new Map(),
+    };
+  });
 }
 
 function taskColorForSession(session) {
@@ -448,11 +451,37 @@ function reportDateHeading(dateKeyValue) {
 
 function groupedSessionsByDate(sessions) {
   return sessions.reduce((groups, session) => {
-    const key = kstDateKey(session.started_at);
+    const key = session.segment_date || kstDateKey(session.started_at);
     if (!groups.has(key)) groups.set(key, []);
     groups.get(key).push(session);
     return groups;
   }, new Map());
+}
+
+function reportSessionSegments(sessions, range) {
+  const rangeStart = kstDateBoundary(range.start);
+  const rangeEnd = kstDateBoundary(range.end);
+  const segments = [];
+  sessions.forEach((session) => {
+    const sessionStart = new Date(session.started_at);
+    const sessionEnd = new Date(session.ended_at || Date.now());
+    let cursor = new Date(Math.max(sessionStart.getTime(), rangeStart.getTime()));
+    const clippedEnd = new Date(Math.min(sessionEnd.getTime(), rangeEnd.getTime()));
+    while (cursor < clippedEnd) {
+      const date = kstDateKey(cursor);
+      const nextDay = kstDateBoundary(addDays(date, 1));
+      const segmentEnd = new Date(Math.min(nextDay.getTime(), clippedEnd.getTime()));
+      segments.push({
+        ...session,
+        segment_date: date,
+        segment_started_at: cursor.toISOString(),
+        segment_ended_at: segmentEnd.toISOString(),
+        segment_seconds: Math.floor((segmentEnd - cursor) / 1000),
+      });
+      cursor = segmentEnd;
+    }
+  });
+  return segments.sort((a, b) => new Date(b.segment_started_at) - new Date(a.segment_started_at));
 }
 
 function renderTasks() {
@@ -515,15 +544,15 @@ function renderTasks() {
 }
 
 function renderTaskEntries(entryList) {
-  const now = new Date();
-  const today = dateKey(now);
-  const recentSessions = state.sessions
+  const today = kstDateKey(new Date());
+  const todayStart = kstDateBoundary(today);
+  const tomorrowStart = kstDateBoundary(addDays(today, 1));
+  const recentSessions = state.taskSessions
     .filter((session) => session.ended_at || kstDateKey(session.started_at) === today)
     .sort((a, b) => new Date(b.started_at) - new Date(a.started_at))
     .slice(0, 8);
-  const todaySeconds = state.sessions
-    .filter((session) => kstDateKey(session.started_at) === today)
-    .reduce((total, session) => total + secondsBetween(session.started_at, session.ended_at), 0);
+  const todaySeconds = state.taskSessions
+    .reduce((total, session) => total + overlapSeconds(session, todayStart, tomorrowStart), 0);
   document.getElementById("today-total").textContent = formatDuration(todaySeconds);
 
   if (!recentSessions.length) {
@@ -663,7 +692,7 @@ function renderTaskColorPicker(containerId, selectedColor, onSelect) {
 function renderWeekStrip() {
   const selectedDate = dateFromKey(state.timelineDate);
   const base = new Date(selectedDate);
-  const todayKey = dateKey(new Date());
+  const todayKey = kstDateKey(new Date());
   base.setDate(selectedDate.getDate() - selectedDate.getDay());
   document.getElementById("week-strip").innerHTML = Array.from({ length: 7 }, (_, index) => {
     const day = new Date(base);
@@ -690,7 +719,7 @@ function renderWeekStrip() {
 
 async function setTimelineDate(value) {
   state.timelineDate = value;
-  state.timelineShouldCenterNow = value === dateKey(new Date());
+  state.timelineShouldCenterNow = value === kstDateKey(new Date());
   document.getElementById("timeline-date").textContent = fmt.format(dateFromKey(state.timelineDate));
   document.getElementById("timeline-date-picker").value = state.timelineDate;
   renderWeekStrip();
@@ -708,16 +737,18 @@ function renderTimeline() {
   const timelineBottomPadding = 118;
   const timelineHeight = (endHour - startHour) * pxPerHour;
   const contentHeight = timelineHeight + timelinePadding + timelineBottomPadding;
-  const daySessions = state.sessions.filter((session) => kstDateKey(session.started_at) === state.timelineDate);
+  const dayStart = kstDateBoundary(state.timelineDate);
+  const dayEnd = kstDateBoundary(addDays(state.timelineDate, 1));
+  const daySessions = state.sessions.filter((session) => overlapSeconds(session, dayStart, dayEnd) > 0);
   const labels = Array.from({ length: endHour - startHour + 1 }, (_, index) => {
     const hour = startHour + index;
     const label = hour === 0 || hour === 24 ? "12 AM" : hour === 12 ? "Noon" : hour > 12 ? `${hour - 12} PM` : `${hour} AM`;
     return `<div class="time-label" style="top:${timelinePadding + index * pxPerHour}px">${label}</div>`;
   }).join("");
   const events = daySessions.map((session) => {
-    const end = new Date(session.ended_at || Date.now());
-    const start = new Date(session.started_at);
-    const startLocal = kstHourFraction(session.started_at);
+    const start = new Date(Math.max(new Date(session.started_at).getTime(), dayStart.getTime()));
+    const end = new Date(Math.min(new Date(session.ended_at || Date.now()).getTime(), dayEnd.getTime()));
+    const startLocal = (start - dayStart) / 3600000;
     const durationHours = Math.max(0.35, (end - start) / 3600000);
     const top = timelinePadding + Math.max(0, Math.min(timelineHeight - 28, (startLocal - startHour) * pxPerHour));
     const height = Math.max(28, Math.min(contentHeight - timelinePadding - top, durationHours * pxPerHour));
@@ -728,15 +759,16 @@ function renderTimeline() {
         <span class="timeline-event-header">
           <strong class="timeline-event-title">${escapeHtml(session.task_name)}</strong>
           <span class="timeline-event-notes">${escapeHtml(notes)}</span>
-          <span class="timeline-event-duration">${formatDuration(secondsBetween(session.started_at, session.ended_at))}</span>
+          <span class="timeline-event-duration">${formatDuration((end - start) / 1000)}</span>
         </span>
       </button>
     `;
   }).join("");
   const now = new Date();
-  const nowHour = now.getHours() + now.getMinutes() / 60;
+  const nowParts = kstParts(now);
+  const nowHour = nowParts.hour + Number(nowParts.minute) / 60;
   const nowLineTop = timelinePadding + (nowHour - startHour) * pxPerHour;
-  const nowLine = dateKey(now) === state.timelineDate && nowHour >= startHour && nowHour <= endHour
+  const nowLine = kstDateKey(now) === state.timelineDate && nowHour >= startHour && nowHour <= endHour
     ? `<div class="now-line" style="top:${nowLineTop}px"></div>`
     : "";
   board.innerHTML = `<div class="timeline-content" style="height:${contentHeight}px;--timeline-offset:${timelinePadding}px">${labels + events + nowLine}</div>`;
@@ -752,22 +784,22 @@ function renderTimeline() {
 function renderReports() {
   const totalByTask = new Map();
   const range = reportRange();
-  const reportSessions = state.reportSessions.filter((session) => reportSessionInRange(session, range));
+  const reportSessions = state.reportSessions;
   const buckets = createReportBuckets(state.reportMode, range);
   reportSessions.forEach((session) => {
-    const seconds = secondsBetween(session.started_at, session.ended_at);
-    const bucketIndex = reportBucketIndex(state.reportMode, session, range);
-    const bucket = buckets[bucketIndex];
-    if (!bucket) return;
-    bucket.total += seconds;
-    const existingTask = bucket.tasks.get(session.task_id) || {
-      seconds: 0,
-      color: taskColorForSession(session),
-      name: session.task_name,
-    };
-    existingTask.seconds += seconds;
-    bucket.tasks.set(session.task_id, existingTask);
-    totalByTask.set(session.task_id, (totalByTask.get(session.task_id) || 0) + seconds);
+    buckets.forEach((bucket) => {
+      const seconds = overlapSeconds(session, bucket.start, bucket.end);
+      if (!seconds) return;
+      bucket.total += seconds;
+      const existingTask = bucket.tasks.get(session.task_id) || {
+        seconds: 0,
+        color: taskColorForSession(session),
+        name: session.task_name,
+      };
+      existingTask.seconds += seconds;
+      bucket.tasks.set(session.task_id, existingTask);
+      totalByTask.set(session.task_id, (totalByTask.get(session.task_id) || 0) + seconds);
+    });
   });
   const total = buckets.reduce((sum, bucket) => sum + bucket.total, 0);
   document.getElementById("total-time").textContent = formatDuration(total);
@@ -837,9 +869,10 @@ function renderReports() {
     `;
   }).join("");
 
+  const sessionSegments = reportSessionSegments(reportSessions, range);
   const sessionList = document.getElementById("session-list");
-  sessionList.innerHTML = Array.from(groupedSessionsByDate(reportSessions).entries()).map(([date, sessions]) => {
-    const dayTotal = sessions.reduce((sum, session) => sum + secondsBetween(session.started_at, session.ended_at), 0);
+  sessionList.innerHTML = Array.from(groupedSessionsByDate(sessionSegments).entries()).map(([date, sessions]) => {
+    const dayTotal = sessions.reduce((sum, session) => sum + session.segment_seconds, 0);
     return `
       <section class="session-day-group">
         <header class="session-day-heading">
@@ -850,15 +883,15 @@ function renderReports() {
           ${sessions.map((session) => `
             <button class="session-row session-edit-trigger" data-session-id="${session.id}" style="--task-color:${session.task_color}">
               <div class="session-times">
-                <span>${timeFmt.format(new Date(session.started_at))}</span>
-                <span>${session.ended_at ? timeFmt.format(new Date(session.ended_at)) : "Running"}</span>
+                <span>${timeFmt.format(new Date(session.segment_started_at))}</span>
+                <span>${!session.ended_at && date === kstDateKey(new Date()) ? "Running" : timeFmt.format(new Date(session.segment_ended_at))}</span>
               </div>
               <span class="session-color"></span>
               <div>
                 <div class="session-title">${escapeHtml(session.task_name)}</div>
                 <div class="session-notes">${escapeHtml(session.notes || "No notes")}</div>
               </div>
-              <strong>${formatDuration(secondsBetween(session.started_at, session.ended_at))}</strong>
+              <strong>${formatDuration(session.segment_seconds)}</strong>
             </button>
           `).join("")}
         </div>
@@ -930,8 +963,8 @@ function selectedSession() {
   if (state.isCreatingSession) return null;
   return [
     ...state.sessions,
+    ...state.taskSessions,
     ...state.reportSessions,
-    ...(state.admin?.sessions || []),
   ].find((session) => session.id === state.editingSessionId);
 }
 
@@ -1005,22 +1038,20 @@ function setSessionDialogMode(mode) {
 function openSessionCreator() {
   const task = state.tasks.find((item) => !item.archived) || state.tasks[0];
   if (!task) return;
-  const start = dateFromKey(state.timelineDate);
   const now = new Date();
-  if (dateKey(now) === state.timelineDate) {
-    start.setHours(now.getHours(), now.getMinutes(), 0, 0);
-  } else {
-    start.setHours(9, 0, 0, 0);
-  }
-  const end = new Date(start);
-  end.setHours(end.getHours() + 1);
+  const nowParts = kstParts(now);
+  const startTime = kstDateKey(now) === state.timelineDate
+    ? `${String(nowParts.hour).padStart(2, "0")}:${nowParts.minute}`
+    : "09:00";
+  const startIso = localDateTimeToIso(state.timelineDate, startTime);
+  const end = localDateTimeParts(new Date(new Date(startIso).getTime() + 3600000));
   state.editingSessionId = null;
   setSessionDialogMode("create");
   renderSessionTaskPicker({ task_id: task.id });
-  document.getElementById("session-start-date").value = dateKey(start);
-  document.getElementById("session-start-time").value = timeKey(start);
-  document.getElementById("session-end-date").value = dateKey(end);
-  document.getElementById("session-end-time").value = timeKey(end);
+  document.getElementById("session-start-date").value = state.timelineDate;
+  document.getElementById("session-start-time").value = startTime;
+  document.getElementById("session-end-date").value = end.date;
+  document.getElementById("session-end-time").value = end.time;
   document.getElementById("session-notes").value = "";
   updateSessionDurationPreview();
   document.getElementById("session-dialog").showModal();
@@ -1029,8 +1060,8 @@ function openSessionCreator() {
 function openSessionEditor(sessionId) {
   const session = [
     ...state.sessions,
+    ...state.taskSessions,
     ...state.reportSessions,
-    ...(state.admin?.sessions || []),
   ].find((item) => item.id === sessionId);
   if (!session) return;
   state.editingSessionId = sessionId;

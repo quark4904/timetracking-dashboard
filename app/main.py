@@ -1,23 +1,39 @@
 from __future__ import annotations
 
+from contextlib import asynccontextmanager
+from datetime import datetime
+from pathlib import Path
+from typing import Annotated
+
 from fastapi import FastAPI, HTTPException, Response
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, StringConstraints, field_validator
 
 from app import repository
 
-app = FastAPI(title="Timetracking Dashboard")
-app.mount("/static", StaticFiles(directory="app/static"), name="static")
+APP_DIR = Path(__file__).resolve().parent
+STATIC_DIR = APP_DIR / "static"
+TaskName = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=80)]
+
+
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    repository.init_db()
+    yield
+
+
+app = FastAPI(title="Timetracking Dashboard", lifespan=lifespan)
+app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 
 class TaskCreate(BaseModel):
-    name: str = Field(min_length=1, max_length=80)
+    name: TaskName
     color: str = Field(pattern=r"^#[0-9a-fA-F]{6}$")
 
 
 class TaskUpdate(BaseModel):
-    name: str | None = Field(default=None, min_length=1, max_length=80)
+    name: TaskName | None = None
     color: str | None = Field(default=None, pattern=r"^#[0-9a-fA-F]{6}$")
     archived: bool | None = None
     notes: str | None = Field(default=None, max_length=2000)
@@ -29,19 +45,21 @@ class TaskReorder(BaseModel):
 
 class SessionUpdate(BaseModel):
     task_id: int
-    started_at: str
-    ended_at: str | None = None
+    started_at: datetime
+    ended_at: datetime | None = None
     notes: str = Field(default="", max_length=2000)
 
-
-@app.on_event("startup")
-def startup() -> None:
-    repository.init_db()
+    @field_validator("started_at", "ended_at")
+    @classmethod
+    def require_timezone(cls, value: datetime | None) -> datetime | None:
+        if value is not None and (value.tzinfo is None or value.utcoffset() is None):
+            raise ValueError("datetime values must include a timezone")
+        return value
 
 
 @app.get("/")
 def index() -> FileResponse:
-    return FileResponse("app/static/index.html")
+    return FileResponse(STATIC_DIR / "index.html")
 
 
 @app.get("/api/health")
@@ -101,10 +119,12 @@ def create_session(payload: SessionUpdate) -> dict:
     try:
         session = repository.create_session(
             payload.task_id,
-            payload.started_at,
-            payload.ended_at,
+            payload.started_at.isoformat(),
+            payload.ended_at.isoformat() if payload.ended_at else None,
             payload.notes,
         )
+    except repository.ActiveSessionConflictError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     if session is None:
@@ -139,10 +159,12 @@ def update_session(session_id: int, payload: SessionUpdate) -> dict:
         session = repository.update_session(
             session_id,
             payload.task_id,
-            payload.started_at,
-            payload.ended_at,
+            payload.started_at.isoformat(),
+            payload.ended_at.isoformat() if payload.ended_at else None,
             payload.notes,
         )
+    except repository.ActiveSessionConflictError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     if session is None:

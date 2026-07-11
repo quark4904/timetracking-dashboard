@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import mimetypes
+import os
 import sqlite3
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -59,7 +60,11 @@ class Handler(BaseHTTPRequestHandler):
         parsed = urlparse(self.path)
         if parsed.path == "/api/tasks":
             payload = self.read_json()
-            return self.send_json(repository.create_task(payload["name"], payload["color"]), status=201)
+            try:
+                task = repository.create_task(payload["name"], payload["color"])
+            except ValueError as exc:
+                return self.send_error(400, str(exc))
+            return self.send_json(task, status=201)
         if parsed.path == "/api/tasks/reorder":
             payload = self.read_json()
             tasks = repository.reorder_tasks([int(task_id) for task_id in payload.get("task_ids", [])])
@@ -75,6 +80,8 @@ class Handler(BaseHTTPRequestHandler):
                     payload.get("ended_at"),
                     payload.get("notes", ""),
                 )
+            except repository.ActiveSessionConflictError as exc:
+                return self.send_error(409, str(exc))
             except ValueError as exc:
                 return self.send_error(400, str(exc))
             if session is None:
@@ -106,6 +113,8 @@ class Handler(BaseHTTPRequestHandler):
                     payload.get("ended_at"),
                     payload.get("notes", ""),
                 )
+            except repository.ActiveSessionConflictError as exc:
+                return self.send_error(409, str(exc))
             except ValueError as exc:
                 return self.send_error(400, str(exc))
             if session is None:
@@ -114,13 +123,16 @@ class Handler(BaseHTTPRequestHandler):
         if parsed.path.startswith("/api/tasks/"):
             task_id = int(parsed.path.split("/")[3])
             payload = self.read_json()
-            task = repository.update_task(
-                task_id,
-                payload.get("name"),
-                payload.get("color"),
-                payload.get("archived"),
-                payload.get("notes"),
-            )
+            try:
+                task = repository.update_task(
+                    task_id,
+                    payload.get("name"),
+                    payload.get("color"),
+                    payload.get("archived"),
+                    payload.get("notes"),
+                )
+            except ValueError as exc:
+                return self.send_error(400, str(exc))
             if task is None:
                 return self.send_error(404, "Task not found")
             return self.send_json(task)
@@ -181,8 +193,10 @@ class Handler(BaseHTTPRequestHandler):
 
 def main() -> None:
     repository.init_db()
-    server = ThreadingHTTPServer(("0.0.0.0", 8010), Handler)
-    print("Serving timetracking dashboard on http://0.0.0.0:8010")
+    host = os.getenv("TIMETRACKING_HOST", "0.0.0.0")
+    port = int(os.getenv("TIMETRACKING_PORT", "8010"))
+    server = ThreadingHTTPServer((host, port), Handler)
+    print(f"Serving timetracking dashboard on http://{host}:{port}")
     server.serve_forever()
 
 

@@ -4,8 +4,14 @@ services:
     container_name: timetracking-dashboard
     restart: unless-stopped
     ports:
-      - "8010:8000"
+      - "127.0.0.1:8010:8000"
     volumes:
       - ./data:/app/data
     environment:
       - TIMETRACKING_DB_PATH=/app/data/timetracking.db
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=2)"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
