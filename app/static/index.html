@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Timetracking Dashboard</title>
     <link rel="icon" href="/static/favicon.svg?v=20260708-1" type="image/svg+xml" />
-    <link rel="stylesheet" href="/static/styles.css?v=20260710-02" />
+    <link rel="stylesheet" href="/static/styles.css?v=20260713-01" />
   </head>
   <body>
     <div class="app-shell">
@@ -278,53 +278,55 @@
           <button type="submit" class="text-button" id="save-session">Save</button>
         </header>
 
-        <section class="session-time-card">
-          <label>
-            <span>From</span>
-            <input
-              class="session-time-input"
-              id="session-start-time"
-              type="text"
-              inputmode="numeric"
-              maxlength="5"
-              pattern="([01][0-9]|2[0-3]):[0-5][0-9]"
-              placeholder="00:00"
-              required
-            />
-            <input class="session-date-input" id="session-start-date" type="date" required />
-          </label>
-          <label>
-            <span>To</span>
-            <input
-              class="session-time-input"
-              id="session-end-time"
-              type="text"
-              inputmode="numeric"
-              maxlength="5"
-              pattern="([01][0-9]|2[0-3]):[0-5][0-9]"
-              placeholder="00:00"
-            />
-            <input class="session-date-input" id="session-end-date" type="date" />
-          </label>
-          <div class="session-duration-row">
-            <span>Duration</span>
-            <strong id="session-duration">0:00</strong>
+        <div class="session-form-body">
+          <section class="session-time-card">
+            <label>
+              <span>From</span>
+              <input
+                class="session-time-input"
+                id="session-start-time"
+                type="text"
+                inputmode="numeric"
+                maxlength="5"
+                pattern="([01][0-9]|2[0-3]):[0-5][0-9]"
+                placeholder="00:00"
+                required
+              />
+              <input class="session-date-input" id="session-start-date" type="date" required />
+            </label>
+            <label>
+              <span>To</span>
+              <input
+                class="session-time-input"
+                id="session-end-time"
+                type="text"
+                inputmode="numeric"
+                maxlength="5"
+                pattern="([01][0-9]|2[0-3]):[0-5][0-9]"
+                placeholder="00:00"
+              />
+              <input class="session-date-input" id="session-end-date" type="date" />
+            </label>
+            <div class="session-duration-row">
+              <span>Duration</span>
+              <strong id="session-duration">0:00</strong>
+            </div>
+          </section>
+
+          <div class="session-field-row session-task-field">
+            <span>Task</span>
+            <select class="native-session-select" id="session-task" tabindex="-1" aria-hidden="true"></select>
+            <button class="session-task-button" id="session-task-button" type="button" aria-haspopup="listbox" aria-expanded="false"></button>
+            <div class="session-task-menu" id="session-task-menu" role="listbox"></div>
           </div>
-        </section>
 
-        <div class="session-field-row session-task-field">
-          <span>Task</span>
-          <select class="native-session-select" id="session-task" tabindex="-1" aria-hidden="true"></select>
-          <button class="session-task-button" id="session-task-button" type="button" aria-haspopup="listbox" aria-expanded="false"></button>
-          <div class="session-task-menu" id="session-task-menu" role="listbox"></div>
+          <label class="session-notes-field">
+            <span>Notes</span>
+            <textarea id="session-notes" rows="5" placeholder="Notes"></textarea>
+          </label>
+
+          <button type="button" class="delete-session-button" id="delete-session">Delete Session</button>
         </div>
-
-        <label class="session-notes-field">
-          <span>Notes</span>
-          <textarea id="session-notes" rows="5" placeholder="Notes"></textarea>
-        </label>
-
-        <button type="button" class="delete-session-button" id="delete-session">Delete Session</button>
       </form>
     </dialog>
 
