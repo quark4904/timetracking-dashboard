@@ -48,6 +48,9 @@ const taskColors = [
   "#bf3ff0", "#ff0a8a", "#ff0a4f", "#ff8a0a", "#ffcc1a", "#00d934", "#24bce3", "#1597ef", "#5956f4",
   "#bf7af0", "#ff7ac7", "#ff767d", "#c49a63", "#8aef00", "#10e69a", "#28d7d7", "#45d0e8", "#8198ff",
 ];
+const autoRefreshIntervalMs = 60_000;
+let autoRefreshTimer = null;
+let autoRefreshInProgress = false;
 
 const icons = {
   play: `<svg class="row-icon" aria-hidden="true" viewBox="0 0 24 24"><path d="M8 5v14l11-7Z" /></svg>`,
@@ -180,6 +183,37 @@ async function reloadVisibleData() {
   await loadData();
   if (state.activeView === "reports") await loadReportData(true);
   if (state.activeView === "settings") await loadAdminData();
+}
+
+async function autoRefreshVisibleData() {
+  if (autoRefreshInProgress || document.visibilityState !== "visible") return;
+  autoRefreshInProgress = true;
+  try {
+    await reloadVisibleData();
+  } catch (error) {
+    console.error("Automatic refresh failed", error);
+  } finally {
+    autoRefreshInProgress = false;
+  }
+}
+
+function stopAutoRefresh() {
+  if (autoRefreshTimer === null) return;
+  clearInterval(autoRefreshTimer);
+  autoRefreshTimer = null;
+}
+
+function startAutoRefresh() {
+  stopAutoRefresh();
+  if (document.visibilityState !== "visible") return;
+  autoRefreshTimer = setInterval(autoRefreshVisibleData, autoRefreshIntervalMs);
+}
+
+async function handleVisibilityChange() {
+  stopAutoRefresh();
+  if (document.visibilityState !== "visible") return;
+  await autoRefreshVisibleData();
+  startAutoRefresh();
 }
 
 function activeSession() {
@@ -1348,3 +1382,5 @@ document.getElementById("active-session-control").addEventListener("click", stop
 
 loadData();
 setInterval(updateLiveTimers, 1000);
+startAutoRefresh();
+document.addEventListener("visibilitychange", handleVisibilityChange);
