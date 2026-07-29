@@ -1188,6 +1188,10 @@ document.querySelectorAll(".nav-item").forEach((button) => {
   });
 });
 
+document.getElementById("brand-home").addEventListener("click", () => {
+  showView("tasks");
+});
+
 document.querySelectorAll(".task-tab").forEach((button) => {
   button.addEventListener("click", () => {
     state.filter = button.dataset.filter;

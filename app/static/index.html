@@ -5,15 +5,15 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Timetracking Dashboard</title>
     <link rel="icon" href="/static/favicon.svg?v=20260708-1" type="image/svg+xml" />
-    <link rel="stylesheet" href="/static/styles.css?v=20260713-01" />
+    <link rel="stylesheet" href="/static/styles.css?v=20260729-01" />
   </head>
   <body>
     <div class="app-shell">
       <aside class="sidebar">
-        <div class="brand">
+        <button class="brand" id="brand-home" type="button" aria-label="Go to home">
           <span class="brand-mark"></span>
           <span>TimeTracking</span>
-        </div>
+        </button>
         <nav class="nav" aria-label="Main">
           <button class="nav-item active" data-view="tasks" aria-label="Tasks">
             <svg class="icon" aria-hidden="true" viewBox="0 0 24 24">
@@ -346,6 +346,6 @@
       <span></span>
     </div>
 
-    <script src="/static/app.js?v=20260729-01"></script>
+    <script src="/static/app.js?v=20260729-02"></script>
   </body>
 </html>
