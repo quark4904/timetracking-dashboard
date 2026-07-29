@@ -6,7 +6,7 @@ const state = {
   reportSessions: [],
   admin: null,
   sessionsMonth: null,
-  reportMode: "month",
+  reportMode: "week",
   reportDate: null,
   reportDataKey: null,
   filter: "active",
