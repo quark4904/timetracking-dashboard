@@ -180,6 +180,7 @@ async function loadAdminData() {
 }
 
 async function reloadVisibleData() {
+  state.reportDataKey = null;
   await loadData();
   if (state.activeView === "reports") await loadReportData(true);
   if (state.activeView === "settings") await loadAdminData();
