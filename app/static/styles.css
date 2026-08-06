@@ -2443,7 +2443,7 @@ dialog::backdrop {
   }
 
   #reports-view .bar-label {
-    bottom: -24px;
+    bottom: -32px;
     font-size: 10px;
   }
 
