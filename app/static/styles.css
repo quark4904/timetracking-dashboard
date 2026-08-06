@@ -698,6 +698,16 @@ body.timeline-active #timeline-view .timeline-board {
 }
 
 @media (min-width: 821px) {
+  #reports-view .period-label-full,
+  #reports-view .bar-weekday-full {
+    display: inline;
+  }
+
+  #reports-view .period-label-compact,
+  #reports-view .bar-weekday-short {
+    display: none;
+  }
+
   #reports-view.view.active {
     padding: 0 16px 0 18px;
   }
@@ -810,7 +820,7 @@ body.timeline-active #timeline-view .timeline-board {
   }
 
   #reports-view .bar-label {
-    bottom: -32px;
+    bottom: -40px;
     font-size: 12px;
   }
 }
