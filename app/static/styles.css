@@ -1324,9 +1324,22 @@ body.timeline-active #timeline-view .timeline-board {
   white-space: nowrap;
 }
 
-.bar-label span {
+.bar-label > span {
   display: block;
   margin-top: 3px;
+}
+
+.bar-label > .bar-weekday {
+  margin-top: 0;
+}
+
+.bar-weekday-full {
+  display: inline;
+}
+
+.bar-weekday-short,
+.period-label-compact {
+  display: none;
 }
 
 .bar-chart[data-range="month"] {
@@ -2336,9 +2349,17 @@ dialog::backdrop {
     text-align: center;
     white-space: nowrap;
     cursor: pointer;
-    font-size: clamp(18px, 5vw, 25px);
+    font-size: clamp(15px, 4.8vw, 22px);
     font-weight: 850;
     box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  }
+
+  #reports-view .period-label-full {
+    display: none;
+  }
+
+  #reports-view .period-label-compact {
+    display: inline;
   }
 
   #reports-view .period-arrow {
@@ -2414,6 +2435,14 @@ dialog::backdrop {
   #reports-view .bar-label {
     bottom: -24px;
     font-size: 10px;
+  }
+
+  #reports-view .bar-weekday-full {
+    display: none;
+  }
+
+  #reports-view .bar-weekday-short {
+    display: inline;
   }
 
   #reports-view .report-grid > .panel:nth-child(2) {

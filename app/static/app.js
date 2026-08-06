@@ -42,8 +42,13 @@ state.reportDate = kstDateKey(new Date());
 state.timelineDate = state.reportDate;
 const monthNames = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
 const weekdayNames = ["SUNDAY", "MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY"];
+const shortWeekdayNames = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"];
 const fullMonthDayFmt = new Intl.DateTimeFormat("en", { month: "long", day: "numeric" });
 const fullMonthYearFmt = new Intl.DateTimeFormat("en", { month: "long", year: "numeric" });
+const shortMonthFmt = new Intl.DateTimeFormat("en", { month: "short" });
+const shortMonthDayFmt = new Intl.DateTimeFormat("en", { month: "short", day: "numeric" });
+const shortMonthYearFmt = new Intl.DateTimeFormat("en", { month: "short", year: "numeric" });
+const shortMonthDayYearFmt = new Intl.DateTimeFormat("en", { month: "short", day: "numeric", year: "numeric" });
 const taskColors = [
   "#bf3ff0", "#ff0a8a", "#ff0a4f", "#ff8a0a", "#ffcc1a", "#00d934", "#24bce3", "#1597ef", "#5956f4",
   "#bf7af0", "#ff7ac7", "#ff767d", "#c49a63", "#8aef00", "#10e69a", "#28d7d7", "#45d0e8", "#8198ff",
@@ -384,6 +389,25 @@ function reportPeriodLabel(mode, value, compact = false) {
   return String(date.getFullYear());
 }
 
+function reportPeriodCompactLabel(mode, value) {
+  const date = dateFromKey(value);
+  if (mode === "day") return shortMonthDayYearFmt.format(date);
+  if (mode === "week") {
+    const start = dateFromKey(startOfWeekKey(value));
+    const end = dateFromKey(addDays(dateKey(start), 6));
+    if (start.getFullYear() === end.getFullYear()) {
+      const year = `, ${start.getFullYear()}`;
+      if (start.getMonth() === end.getMonth()) {
+        return `${shortMonthFmt.format(start)} ${start.getDate()}–${end.getDate()}${year}`;
+      }
+      return `${shortMonthDayFmt.format(start)}–${shortMonthDayFmt.format(end)}${year}`;
+    }
+    return `${shortMonthDayFmt.format(start)}, ${start.getFullYear()}–${shortMonthDayFmt.format(end)}, ${end.getFullYear()}`;
+  }
+  if (mode === "month") return shortMonthYearFmt.format(date);
+  return String(date.getFullYear());
+}
+
 function currentReportDateForMode(mode) {
   const today = kstDateKey(new Date());
   if (mode === "week") return startOfWeekKey(today);
@@ -433,7 +457,7 @@ function createReportBuckets(mode, range) {
       const date = dateFromKey(key);
       return {
         key,
-        label: `${weekdayNames[date.getDay()]}<span>${String(date.getMonth() + 1).padStart(2, "0")}/${String(date.getDate()).padStart(2, "0")}</span>`,
+        label: `<span class="bar-weekday"><span class="bar-weekday-full">${weekdayNames[date.getDay()]}</span><span class="bar-weekday-short">${shortWeekdayNames[date.getDay()]}</span></span><span class="bar-date">${String(date.getMonth() + 1).padStart(2, "0")}/${String(date.getDate()).padStart(2, "0")}</span>`,
         start: kstDateBoundary(key),
         end: kstDateBoundary(addDays(key, 1)),
         total: 0,
@@ -853,7 +877,13 @@ function renderReports() {
   );
   document.getElementById("report-prev-period").setAttribute("aria-label", `Previous period, ${previousPeriodLabel}`);
   document.getElementById("report-prev-period").title = previousPeriodLabel;
-  document.getElementById("report-current-period").textContent = reportPeriodLabel(state.reportMode, state.reportDate);
+  const currentPeriod = document.getElementById("report-current-period");
+  const currentPeriodLabel = reportPeriodLabel(state.reportMode, state.reportDate);
+  currentPeriod.setAttribute("aria-label", currentPeriodLabel);
+  currentPeriod.innerHTML = `
+    <span class="period-label-full">${escapeHtml(currentPeriodLabel)}</span>
+    <span class="period-label-compact">${escapeHtml(reportPeriodCompactLabel(state.reportMode, state.reportDate))}</span>
+  `;
   document.getElementById("report-next-period").setAttribute("aria-label", `Next period, ${nextPeriodLabel}`);
   document.getElementById("report-next-period").title = nextPeriodLabel;
   document.querySelectorAll("[data-report-range]").forEach((button) => {
