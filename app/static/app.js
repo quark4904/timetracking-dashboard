@@ -18,6 +18,7 @@ const state = {
   editingTaskColor: "#0a84ff",
   newTaskColor: "#4da1ff",
   timelineDate: null,
+  timelineFollowsToday: true,
   timelineShouldCenterNow: true,
 };
 
@@ -185,10 +186,19 @@ async function loadAdminData() {
 }
 
 async function reloadVisibleData() {
+  syncTimelineDateWithToday();
   state.reportDataKey = null;
   await loadData();
   if (state.activeView === "reports") await loadReportData(true);
   if (state.activeView === "settings") await loadAdminData();
+}
+
+function syncTimelineDateWithToday() {
+  if (!state.timelineFollowsToday) return;
+  const today = kstDateKey(new Date());
+  if (state.timelineDate === today) return;
+  state.timelineDate = today;
+  state.timelineShouldCenterNow = true;
 }
 
 async function autoRefreshVisibleData() {
@@ -778,7 +788,8 @@ function renderWeekStrip() {
 
 async function setTimelineDate(value) {
   state.timelineDate = value;
-  state.timelineShouldCenterNow = value === kstDateKey(new Date());
+  state.timelineFollowsToday = value === kstDateKey(new Date());
+  state.timelineShouldCenterNow = state.timelineFollowsToday;
   document.getElementById("timeline-date").textContent = fmt.format(dateFromKey(state.timelineDate));
   document.getElementById("timeline-date-picker").value = state.timelineDate;
   renderWeekStrip();
