@@ -1,3 +1,28 @@
+import {
+  addDays,
+  dateFromKey,
+  dateKey,
+  formatDuration,
+  formatLiveDuration,
+  kstDateBoundary,
+  kstDateKey,
+  kstParts,
+  localDateTimeParts,
+  localDateTimeToIso,
+  overlapSeconds,
+  secondsBetween,
+  timeFmt,
+} from "./modules/date-time.mjs?v=1b6e1e7903ff";
+import {
+  createReportBuckets,
+  currentReportDateForMode,
+  reportModeStep,
+  reportPeriodCompactLabel,
+  reportPeriodLabel,
+  reportRangeFor,
+  reportSessionSegments,
+} from "./modules/reporting.mjs?v=9b60d8ef26b7";
+
 const state = {
   tasks: [],
   sessions: [],
@@ -23,33 +48,8 @@ const state = {
 };
 
 const fmt = new Intl.DateTimeFormat("en", { month: "long", day: "numeric", year: "numeric" });
-const timeFmt = new Intl.DateTimeFormat("ko-KR", {
-  timeZone: "Asia/Seoul",
-  hour: "2-digit",
-  minute: "2-digit",
-  hourCycle: "h23",
-});
-const kstPartsFmt = new Intl.DateTimeFormat("en", {
-  timeZone: "Asia/Seoul",
-  year: "numeric",
-  month: "2-digit",
-  day: "2-digit",
-  hour: "2-digit",
-  minute: "2-digit",
-  second: "2-digit",
-  hourCycle: "h23",
-});
 state.reportDate = kstDateKey(new Date());
 state.timelineDate = state.reportDate;
-const monthNames = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
-const weekdayNames = ["SUNDAY", "MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY"];
-const shortWeekdayNames = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"];
-const fullMonthDayFmt = new Intl.DateTimeFormat("en", { month: "long", day: "numeric" });
-const fullMonthYearFmt = new Intl.DateTimeFormat("en", { month: "long", year: "numeric" });
-const shortMonthFmt = new Intl.DateTimeFormat("en", { month: "short" });
-const shortMonthDayFmt = new Intl.DateTimeFormat("en", { month: "short", day: "numeric" });
-const shortMonthYearFmt = new Intl.DateTimeFormat("en", { month: "short", year: "numeric" });
-const shortMonthDayYearFmt = new Intl.DateTimeFormat("en", { month: "short", day: "numeric", year: "numeric" });
 const taskColors = [
   "#bf3ff0", "#ff0a8a", "#ff0a4f", "#ff8a0a", "#ffcc1a", "#00d934", "#24bce3", "#1597ef", "#5956f4",
   "#bf7af0", "#ff7ac7", "#ff767d", "#c49a63", "#8aef00", "#10e69a", "#28d7d7", "#45d0e8", "#8198ff",
@@ -57,56 +57,26 @@ const taskColors = [
 const autoRefreshIntervalMs = 60_000;
 let autoRefreshTimer = null;
 let autoRefreshInProgress = false;
+const requestVersions = new Map();
+const actionLocks = new Set();
+let toastTimer = null;
+let lastRefreshErrorAt = 0;
+let sessionTaskMenuIndex = 0;
 
 const icons = {
   play: `<svg class="row-icon" aria-hidden="true" viewBox="0 0 24 24"><path d="M8 5v14l11-7Z" /></svg>`,
   pause: `<svg class="row-icon" aria-hidden="true" viewBox="0 0 24 24"><path d="M9 5v14" /><path d="M15 5v14" /></svg>`,
   info: `<svg class="button-icon" aria-hidden="true" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" /><path d="M12 11v5" /><path d="M12 8h.01" /></svg>`,
-  grip: `<svg class="button-icon" aria-hidden="true" viewBox="0 0 24 24"><path d="M8 6h.01" /><path d="M16 6h.01" /><path d="M8 12h.01" /><path d="M16 12h.01" /><path d="M8 18h.01" /><path d="M16 18h.01" /></svg>`,
 };
 
-function secondsBetween(start, end) {
-  return Math.max(0, Math.floor((new Date(end || Date.now()) - new Date(start)) / 1000));
+function isAbortError(error) {
+  return error?.name === "AbortError";
 }
 
-function kstDateBoundary(date, hour = 0) {
-  return new Date(`${date}T${String(hour).padStart(2, "0")}:00:00+09:00`);
-}
-
-function overlapSeconds(session, rangeStart, rangeEnd) {
-  const start = Math.max(new Date(session.started_at).getTime(), rangeStart.getTime());
-  const sessionEnd = session.ended_at ? new Date(session.ended_at).getTime() : Date.now();
-  const end = Math.min(sessionEnd, rangeEnd.getTime());
-  return Math.max(0, Math.floor((end - start) / 1000));
-}
-
-function formatDuration(seconds) {
-  const safe = Math.max(0, Math.floor(seconds));
-  const hours = Math.floor(safe / 3600);
-  const minutes = Math.floor((safe % 3600) / 60);
-  return `${hours}:${String(minutes).padStart(2, "0")}`;
-}
-
-function formatLiveDuration(seconds) {
-  const safe = Math.max(0, Math.floor(seconds));
-  const hours = Math.floor(safe / 3600);
-  const minutes = Math.floor((safe % 3600) / 60);
-  const secs = safe % 60;
-  return `${hours}:${String(minutes).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
-}
-
-function localDateTimeParts(value) {
-  if (!value) return "";
-  const parts = kstParts(value);
-  return {
-    date: `${parts.year}-${parts.month}-${parts.day}`,
-    time: `${String(parts.hour).padStart(2, "0")}:${parts.minute}`,
-  };
-}
-
-function localDateTimeToIso(date, time) {
-  if (!date || !time) return null;
-  return new Date(`${date}T${time}:00+09:00`).toISOString();
+function nextRequestVersion(key) {
+  const version = (requestVersions.get(key) || 0) + 1;
+  requestVersions.set(key, version);
+  return version;
 }
 
 async function api(path, options = {}) {
@@ -114,9 +84,82 @@ async function api(path, options = {}) {
     headers: { "Content-Type": "application/json" },
     ...options,
   });
-  if (!response.ok) throw new Error(await response.text());
   if (response.status === 204) return null;
-  return response.json();
+  const rawBody = await response.text();
+  let body = null;
+  try {
+    body = rawBody ? JSON.parse(rawBody) : null;
+  } catch {
+    body = null;
+  }
+  if (!response.ok) {
+    const error = new Error(body?.detail || body?.message || rawBody || `Request failed (${response.status})`);
+    error.status = response.status;
+    error.payload = body;
+    throw error;
+  }
+  return body;
+}
+
+async function apiLatest(key, path, options = {}) {
+  const version = nextRequestVersion(key);
+  let result;
+  try {
+    result = await api(path, options);
+  } catch (error) {
+    if (requestVersions.get(key) !== version || isAbortError(error)) return null;
+    throw error;
+  }
+  return requestVersions.get(key) === version ? result : null;
+}
+
+function showToast(message, tone = "error") {
+  const toast = document.getElementById("toast");
+  if (!toast) return;
+  clearTimeout(toastTimer);
+  toast.textContent = message;
+  toast.className = `toast ${tone}`;
+  toast.hidden = false;
+  requestAnimationFrame(() => toast.classList.add("visible"));
+  toastTimer = setTimeout(() => {
+    toast.classList.remove("visible");
+    setTimeout(() => {
+      if (!toast.classList.contains("visible")) toast.hidden = true;
+    }, 180);
+  }, 3600);
+}
+
+function errorMessage(error, fallback = "The operation could not be completed.") {
+  const message = error?.message || "";
+  if (error?.status === 409) {
+    if (message.includes("overlap")) return "This session overlaps an existing session.";
+    if (message.includes("active")) return "Another session is already active.";
+    return "The operation conflicts with the current data.";
+  }
+  if (error?.status === 400) {
+    if (message.includes("future")) return "A session cannot be saved in the future.";
+    if (message.includes("timezone")) return "Enter a date and time with a timezone.";
+    return "Check the entered values.";
+  }
+  return fallback;
+}
+
+function reportError(error, fallback) {
+  if (!isAbortError(error)) showToast(errorMessage(error, fallback));
+}
+
+async function withActionLock(key, action) {
+  if (actionLocks.has(key)) return false;
+  actionLocks.add(key);
+  try {
+    return await action();
+  } finally {
+    actionLocks.delete(key);
+  }
+}
+
+function runSafely(action, fallback) {
+  return Promise.resolve().then(action).catch((error) => reportError(error, fallback));
 }
 
 async function loadData() {
@@ -135,7 +178,12 @@ async function loadData() {
 }
 
 async function fetchActiveSession() {
-  return api("/api/sessions/active").catch(() => null);
+  try {
+    return await api("/api/sessions/active");
+  } catch (error) {
+    reportError(error, "Could not load the active session.");
+    return null;
+  }
 }
 
 function monthRangeForDateKey(value) {
@@ -158,7 +206,8 @@ function sessionsPathForRange(start, end) {
 async function fetchTimelineSessions(force = false) {
   const range = monthRangeForDateKey(state.timelineDate);
   if (!force && state.sessionsMonth === range.key) return state.sessions;
-  const sessions = await api(sessionsPathForRange(range.start, range.end));
+  const sessions = await apiLatest("timeline-sessions", sessionsPathForRange(range.start, range.end));
+  if (sessions === null) return state.sessions;
   state.sessionsMonth = range.key;
   return sessions;
 }
@@ -175,7 +224,9 @@ async function loadReportData(force = false) {
     renderReports();
     return;
   }
-  state.reportSessions = await api(sessionsPathForRange(range.start, range.end));
+  const sessions = await apiLatest("report-sessions", sessionsPathForRange(range.start, range.end));
+  if (sessions === null || reportRange().key !== range.key) return;
+  state.reportSessions = sessions;
   state.reportDataKey = range.key;
   renderReports();
 }
@@ -208,6 +259,10 @@ async function autoRefreshVisibleData() {
     await reloadVisibleData();
   } catch (error) {
     console.error("Automatic refresh failed", error);
+    if (Date.now() - lastRefreshErrorAt > autoRefreshIntervalMs) {
+      showToast("Automatic refresh failed.");
+      lastRefreshErrorAt = Date.now();
+    }
   } finally {
     autoRefreshInProgress = false;
   }
@@ -294,142 +349,25 @@ function renderActiveSessionControl() {
 }
 
 async function stopActiveSession() {
-  await api("/api/sessions/stop", { method: "POST" }).catch(() => null);
-  await reloadVisibleData();
-}
-
-function kstParts(value) {
-  const parts = Object.fromEntries(kstPartsFmt.formatToParts(new Date(value)).map((part) => [part.type, part.value]));
-  return {
-    year: parts.year,
-    month: parts.month,
-    day: parts.day,
-    hour: Number(parts.hour),
-    minute: parts.minute,
-    second: parts.second,
-  };
-}
-
-function kstDateKey(value) {
-  const parts = kstParts(value);
-  return `${parts.year}-${parts.month}-${parts.day}`;
-}
-
-function dateKey(value) {
-  return `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, "0")}-${String(value.getDate()).padStart(2, "0")}`;
-}
-
-function dateFromKey(value) {
-  const [year, month, day] = value.split("-").map(Number);
-  return new Date(year, month - 1, day);
+  return withActionLock("stop-active-session", async () => {
+    const control = document.getElementById("active-session-control");
+    if (control) control.disabled = true;
+    try {
+      await api("/api/sessions/stop", { method: "POST" });
+      await reloadVisibleData();
+    } catch (error) {
+      reportError(error, "Could not stop the active session.");
+      renderActiveSessionControl();
+    }
+  });
 }
 
 function centeredTimelineScrollTop(board, lineTop, contentHeight) {
   const maxScrollTop = Math.max(0, contentHeight - board.clientHeight);
   return Math.max(0, Math.min(maxScrollTop, lineTop - board.clientHeight / 2));
 }
-
-function addDays(value, amount) {
-  const date = dateFromKey(value);
-  date.setDate(date.getDate() + amount);
-  return dateKey(date);
-}
-
-function addMonths(value, amount) {
-  const date = dateFromKey(value);
-  date.setMonth(date.getMonth() + amount);
-  return dateKey(date);
-}
-
-function addYears(value, amount) {
-  const date = dateFromKey(value);
-  date.setFullYear(date.getFullYear() + amount);
-  return dateKey(date);
-}
-
-function startOfWeekKey(value) {
-  const date = dateFromKey(value);
-  date.setDate(date.getDate() - date.getDay());
-  return dateKey(date);
-}
-
-function reportRangeFor(mode, value) {
-  const date = dateFromKey(value);
-  if (mode === "day") {
-    const start = dateKey(date);
-    return { start, end: addDays(start, 1), key: `${mode}:${start}` };
-  }
-  if (mode === "week") {
-    const start = startOfWeekKey(value);
-    return { start, end: addDays(start, 7), key: `${mode}:${start}` };
-  }
-  if (mode === "month") {
-    const start = dateKey(new Date(date.getFullYear(), date.getMonth(), 1));
-    return { start, end: addMonths(start, 1), key: `${mode}:${start}` };
-  }
-  const start = `${date.getFullYear()}-01-01`;
-  return { start, end: `${date.getFullYear() + 1}-01-01`, key: `${mode}:${start}` };
-}
-
 function reportRange() {
   return reportRangeFor(state.reportMode, state.reportDate);
-}
-
-function reportModeStep(mode) {
-  if (mode === "day") return (value, amount) => addDays(value, amount);
-  if (mode === "week") return (value, amount) => addDays(value, amount * 7);
-  if (mode === "month") return addMonths;
-  return addYears;
-}
-
-function reportPeriodLabel(mode, value, compact = false) {
-  const date = dateFromKey(value);
-  if (mode === "day") {
-    return compact ? fullMonthDayFmt.format(date) : fmt.format(date);
-  }
-  if (mode === "week") {
-    const start = dateFromKey(startOfWeekKey(value));
-    const end = dateFromKey(addDays(dateKey(start), 6));
-    if (compact) return fullMonthDayFmt.format(start);
-    return `${fullMonthDayFmt.format(start)}, ${start.getFullYear()} - ${fullMonthDayFmt.format(end)}, ${end.getFullYear()}`;
-  }
-  if (mode === "month") {
-    return fullMonthYearFmt.format(date);
-  }
-  return String(date.getFullYear());
-}
-
-function reportPeriodCompactLabel(mode, value) {
-  const date = dateFromKey(value);
-  if (mode === "day") return shortMonthDayYearFmt.format(date);
-  if (mode === "week") {
-    const start = dateFromKey(startOfWeekKey(value));
-    const end = dateFromKey(addDays(dateKey(start), 6));
-    if (start.getFullYear() === end.getFullYear()) {
-      const year = `, ${start.getFullYear()}`;
-      if (start.getMonth() === end.getMonth()) {
-        return `${shortMonthFmt.format(start)} ${start.getDate()}–${end.getDate()}${year}`;
-      }
-      return `${shortMonthDayFmt.format(start)}–${shortMonthDayFmt.format(end)}${year}`;
-    }
-    return `${shortMonthDayFmt.format(start)}, ${start.getFullYear()}–${shortMonthDayFmt.format(end)}, ${end.getFullYear()}`;
-  }
-  if (mode === "month") return shortMonthYearFmt.format(date);
-  return String(date.getFullYear());
-}
-
-function currentReportDateForMode(mode) {
-  const today = kstDateKey(new Date());
-  if (mode === "week") return startOfWeekKey(today);
-  if (mode === "month") {
-    const date = dateFromKey(today);
-    return dateKey(new Date(date.getFullYear(), date.getMonth(), 1));
-  }
-  if (mode === "year") {
-    const date = dateFromKey(today);
-    return `${date.getFullYear()}-01-01`;
-  }
-  return today;
 }
 
 function reportEyebrowText(mode) {
@@ -450,63 +388,6 @@ function averageLabelText(mode) {
   }[mode];
 }
 
-function createReportBuckets(mode, range) {
-  if (mode === "day") {
-    return Array.from({ length: 24 }, (_, index) => ({
-      key: String(index).padStart(2, "0"),
-      label: index % 3 === 0 ? String(index).padStart(2, "0") : "",
-      start: kstDateBoundary(range.start, index),
-      end: index === 23 ? kstDateBoundary(range.end) : kstDateBoundary(range.start, index + 1),
-      total: 0,
-      tasks: new Map(),
-    }));
-  }
-  if (mode === "week") {
-    return Array.from({ length: 7 }, (_, index) => {
-      const key = addDays(range.start, index);
-      const date = dateFromKey(key);
-      return {
-        key,
-        label: `<span class="bar-weekday"><span class="bar-weekday-full">${weekdayNames[date.getDay()]}</span><span class="bar-weekday-short">${shortWeekdayNames[date.getDay()]}</span></span><span class="bar-date">${String(date.getMonth() + 1).padStart(2, "0")}/${String(date.getDate()).padStart(2, "0")}</span>`,
-        start: kstDateBoundary(key),
-        end: kstDateBoundary(addDays(key, 1)),
-        total: 0,
-        tasks: new Map(),
-      };
-    });
-  }
-  if (mode === "month") {
-    const start = dateFromKey(range.start);
-    const end = dateFromKey(range.end);
-    const length = Math.round((end - start) / 86400000);
-    return Array.from({ length }, (_, index) => {
-      const key = addDays(range.start, index);
-      const date = dateFromKey(key);
-      return {
-        key,
-        label: String(date.getDate()),
-        start: kstDateBoundary(key),
-        end: kstDateBoundary(addDays(key, 1)),
-        total: 0,
-        tasks: new Map(),
-      };
-    });
-  }
-  const year = Number(range.start.slice(0, 4));
-  return monthNames.map((label, index) => {
-    const start = `${year}-${String(index + 1).padStart(2, "0")}-01`;
-    const end = index === 11 ? `${year + 1}-01-01` : `${year}-${String(index + 2).padStart(2, "0")}-01`;
-    return {
-      key: String(index),
-      label,
-      start: kstDateBoundary(start),
-      end: kstDateBoundary(end),
-      total: 0,
-      tasks: new Map(),
-    };
-  });
-}
-
 function taskColorForSession(session) {
   return session.task_color || state.tasks.find((task) => task.id === session.task_id)?.color || "#0a84ff";
 }
@@ -525,32 +406,6 @@ function groupedSessionsByDate(sessions) {
     groups.get(key).push(session);
     return groups;
   }, new Map());
-}
-
-function reportSessionSegments(sessions, range) {
-  const rangeStart = kstDateBoundary(range.start);
-  const rangeEnd = kstDateBoundary(range.end);
-  const segments = [];
-  sessions.forEach((session) => {
-    const sessionStart = new Date(session.started_at);
-    const sessionEnd = new Date(session.ended_at || Date.now());
-    let cursor = new Date(Math.max(sessionStart.getTime(), rangeStart.getTime()));
-    const clippedEnd = new Date(Math.min(sessionEnd.getTime(), rangeEnd.getTime()));
-    while (cursor < clippedEnd) {
-      const date = kstDateKey(cursor);
-      const nextDay = kstDateBoundary(addDays(date, 1));
-      const segmentEnd = new Date(Math.min(nextDay.getTime(), clippedEnd.getTime()));
-      segments.push({
-        ...session,
-        segment_date: date,
-        segment_started_at: cursor.toISOString(),
-        segment_ended_at: segmentEnd.toISOString(),
-        segment_seconds: Math.floor((segmentEnd - cursor) / 1000),
-      });
-      cursor = segmentEnd;
-    }
-  });
-  return segments.sort((a, b) => new Date(b.segment_started_at) - new Date(a.segment_started_at));
 }
 
 function renderTasks() {
@@ -575,8 +430,11 @@ function renderTasks() {
             <span class="task-run-icon">${icons.play}</span>
             <span class="task-name">${escapeHtml(task.name)}</span>
           </div>
-          <button class="task-info-button" aria-label="Edit ${escapeHtml(task.name)}">${icons.info}</button>
-          <button class="task-drag-handle" aria-label="Move ${escapeHtml(task.name)}">${icons.grip}</button>
+          <button class="task-info-button" type="button" aria-label="Edit ${escapeHtml(task.name)}">${icons.info}</button>
+          <div class="task-reorder-controls" aria-label="Reorder ${escapeHtml(task.name)}">
+            <button class="task-move-button" type="button" data-direction="up" aria-label="Move ${escapeHtml(task.name)} up">↑</button>
+            <button class="task-move-button" type="button" data-direction="down" aria-label="Move ${escapeHtml(task.name)} down">↓</button>
+          </div>
         </div>
       `;
     }).join("") || `<div class="muted">No tasks here yet</div>`;
@@ -605,9 +463,20 @@ function renderTasks() {
   list.querySelectorAll(".task-row").forEach((row) => {
     row.addEventListener("click", async () => {
       const taskId = Number(row.dataset.taskId);
-      if (active?.task_id === taskId) await stopActiveSession();
-      else await api(`/api/tasks/${taskId}/start`, { method: "POST" });
-      if (active?.task_id !== taskId) await reloadVisibleData();
+      await withActionLock(`task-session:${taskId}`, async () => {
+        row.disabled = true;
+        try {
+          if (active?.task_id === taskId) await stopActiveSession();
+          else {
+            await api(`/api/tasks/${taskId}/start`, { method: "POST" });
+            await reloadVisibleData();
+          }
+        } catch (error) {
+          reportError(error, "Could not change the session state.");
+        } finally {
+          if (row.isConnected) row.disabled = false;
+        }
+      });
     });
   });
 }
@@ -675,6 +544,16 @@ function bindTaskEditRow(row) {
   row.querySelector(".task-info-button").addEventListener("click", () => {
     openTaskEditor(taskId);
   });
+  row.querySelectorAll(".task-move-button").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const direction = button.dataset.direction === "up" ? -1 : 1;
+      const taskIds = visibleTasks().map((task) => task.id);
+      const index = taskIds.indexOf(taskId);
+      const targetId = taskIds[index + direction];
+      if (!targetId) return;
+      await moveTaskBefore(taskId, targetId);
+    });
+  });
   row.addEventListener("dragstart", (event) => {
     event.dataTransfer.effectAllowed = "move";
     event.dataTransfer.setData("text/plain", String(taskId));
@@ -696,24 +575,31 @@ function bindTaskEditRow(row) {
 }
 
 async function moveTaskBefore(sourceId, targetId) {
-  const visibleIds = visibleTasks().map((task) => task.id);
-  const fromIndex = visibleIds.indexOf(sourceId);
-  const toIndex = visibleIds.indexOf(targetId);
-  if (fromIndex === -1 || toIndex === -1) return;
-  visibleIds.splice(fromIndex, 1);
-  visibleIds.splice(toIndex, 0, sourceId);
-  const visibleTaskById = new Map(state.tasks.filter((task) => visibleIds.includes(task.id)).map((task) => [task.id, task]));
-  const reorderedVisibleTasks = visibleIds.map((id) => visibleTaskById.get(id));
-  state.tasks = state.tasks.map((task) => {
-    if (!visibleTaskById.has(task.id)) return task;
-    return reorderedVisibleTasks.shift();
+  return withActionLock("reorder-tasks", async () => {
+    const visibleIds = visibleTasks().map((task) => task.id);
+    const fromIndex = visibleIds.indexOf(sourceId);
+    const toIndex = visibleIds.indexOf(targetId);
+    if (fromIndex === -1 || toIndex === -1) return;
+    visibleIds.splice(fromIndex, 1);
+    visibleIds.splice(toIndex, 0, sourceId);
+    const visibleTaskById = new Map(state.tasks.filter((task) => visibleIds.includes(task.id)).map((task) => [task.id, task]));
+    const reorderedVisibleTasks = visibleIds.map((id) => visibleTaskById.get(id));
+    state.tasks = state.tasks.map((task) => {
+      if (!visibleTaskById.has(task.id)) return task;
+      return reorderedVisibleTasks.shift();
+    });
+    renderTasks();
+    try {
+      await api("/api/tasks/reorder", {
+        method: "POST",
+        body: JSON.stringify({ task_ids: state.tasks.map((task) => task.id) }),
+      });
+      await reloadVisibleData();
+    } catch (error) {
+      reportError(error, "Could not save the task order.");
+      await reloadVisibleData().catch(() => null);
+    }
   });
-  renderTasks();
-  await api("/api/tasks/reorder", {
-    method: "POST",
-    body: JSON.stringify({ task_ids: state.tasks.map((task) => task.id) }),
-  });
-  await reloadVisibleData();
 }
 
 function openTaskEditor(taskId) {
@@ -723,7 +609,9 @@ function openTaskEditor(taskId) {
   state.editingTaskColor = task.color;
   document.getElementById("edit-task-name").value = task.name;
   document.getElementById("edit-task-notes").value = task.notes || "";
-  document.getElementById("archive-current-task").hidden = Boolean(task.archived);
+  const archiveButton = document.getElementById("archive-current-task");
+  archiveButton.hidden = false;
+  archiveButton.textContent = task.archived ? "Unarchive Task" : "Archive Task";
   renderTaskColorPicker("edit-task-colors", state.editingTaskColor, (color) => {
     state.editingTaskColor = color;
   });
@@ -911,7 +799,7 @@ function renderReports() {
       .sort((a, b) => b.seconds - a.seconds)
       .map((task) => {
         const segmentHeight = bucket.total ? (task.seconds / bucket.total) * 100 : 0;
-        return `<span class="bar-segment" data-tooltip-name="${escapeHtml(task.name)}" data-tooltip-time="${formatDuration(task.seconds)}" style="height:${segmentHeight}%;background:${task.color}"></span>`;
+        return `<button type="button" class="bar-segment" aria-label="${escapeHtml(`${task.name}, ${formatDuration(task.seconds)}`)}" data-tooltip-name="${escapeHtml(task.name)}" data-tooltip-time="${formatDuration(task.seconds)}" style="height:${segmentHeight}%;background:${task.color}"></button>`;
       })
       .join("");
     const label = bucket.total > 0 ? `<span class="bar-total">${formatDuration(bucket.total)}</span>` : "";
@@ -1015,12 +903,16 @@ function moveChartTooltip(event) {
 }
 
 function showChartTooltip(target, event) {
+  showChartTooltipAt(target, event.clientX, event.clientY);
+}
+
+function showChartTooltipAt(target, clientX, clientY) {
   const tooltip = document.getElementById("chart-tooltip");
   tooltip.querySelector("strong").textContent = target.dataset.tooltipName || "";
   tooltip.querySelector("span").textContent = target.dataset.tooltipTime || "";
   tooltip.setAttribute("aria-hidden", "false");
   tooltip.classList.add("visible");
-  moveChartTooltip(event);
+  moveChartTooltip({ clientX, clientY });
 }
 
 function hideChartTooltip() {
@@ -1054,8 +946,32 @@ function selectedSessionTask() {
 }
 
 function closeSessionTaskMenu() {
-  document.getElementById("session-task-menu").classList.remove("open");
-  document.getElementById("session-task-button").setAttribute("aria-expanded", "false");
+  const menu = document.getElementById("session-task-menu");
+  const button = document.getElementById("session-task-button");
+  menu.classList.remove("open");
+  button.setAttribute("aria-expanded", "false");
+  menu.removeAttribute("aria-activedescendant");
+}
+
+function focusSessionTaskOption(index) {
+  const options = [...document.querySelectorAll(".session-task-option")];
+  if (!options.length) return;
+  sessionTaskMenuIndex = (index + options.length) % options.length;
+  const option = options[sessionTaskMenuIndex];
+  const menu = document.getElementById("session-task-menu");
+  options.forEach((item) => item.classList.toggle("active", item === option));
+  menu.setAttribute("aria-activedescendant", option.id);
+  menu.focus();
+}
+
+function openSessionTaskMenu() {
+  const menu = document.getElementById("session-task-menu");
+  const isOpen = menu.classList.contains("open");
+  if (isOpen) return;
+  menu.classList.add("open");
+  document.getElementById("session-task-button").setAttribute("aria-expanded", "true");
+  const selectedIndex = [...document.querySelectorAll(".session-task-option")].findIndex((option) => option.classList.contains("selected"));
+  focusSessionTaskOption(selectedIndex >= 0 ? selectedIndex : 0);
 }
 
 function updateSessionTaskButton() {
@@ -1079,11 +995,14 @@ function renderSessionTaskPicker(session) {
   select.innerHTML = tasks.map((task) => `<option value="${task.id}">${escapeHtml(task.name)}</option>`).join("");
   select.value = String(session.task_id);
   const selectedId = Number(select.value);
+  sessionTaskMenuIndex = Math.max(0, tasks.findIndex((task) => task.id === selectedId));
   document.getElementById("session-task-menu").innerHTML = tasks.map((task) => `
     <button
+      id="session-task-option-${task.id}"
       class="session-task-option ${task.id === selectedId ? "selected" : ""}"
       type="button"
       role="option"
+      tabindex="-1"
       aria-selected="${task.id === selectedId ? "true" : "false"}"
       data-task-id="${task.id}"
       style="--task-color:${task.color}"
@@ -1101,6 +1020,7 @@ function setSessionTask(taskId) {
   const session = selectedSession();
   renderSessionTaskPicker({ ...(session || {}), task_id: Number(taskId) });
   closeSessionTaskMenu();
+  document.getElementById("session-task-button").focus();
 }
 
 function setSessionDialogMode(mode) {
@@ -1109,6 +1029,19 @@ function setSessionDialogMode(mode) {
   document.getElementById("session-dialog-title").textContent = isCreating ? "New Session" : "Edit Session";
   document.getElementById("save-session").textContent = isCreating ? "Create" : "Save";
   document.getElementById("delete-session").hidden = isCreating;
+}
+
+function sessionTime(prefix) {
+  const hour = document.getElementById(`session-${prefix}-hour`).value.trim();
+  const minute = document.getElementById(`session-${prefix}-minute`).value.trim();
+  if (!hour && !minute) return "";
+  return `${hour}:${minute}`;
+}
+
+function setSessionTime(prefix, value) {
+  const [hour = "", minute = ""] = value ? value.split(":") : [];
+  document.getElementById(`session-${prefix}-hour`).value = hour;
+  document.getElementById(`session-${prefix}-minute`).value = minute;
 }
 
 function openSessionCreator() {
@@ -1125,10 +1058,11 @@ function openSessionCreator() {
   setSessionDialogMode("create");
   renderSessionTaskPicker({ task_id: task.id });
   document.getElementById("session-start-date").value = state.timelineDate;
-  document.getElementById("session-start-time").value = startTime;
+  setSessionTime("start", startTime);
   document.getElementById("session-end-date").value = end.date;
-  document.getElementById("session-end-time").value = end.time;
+  setSessionTime("end", end.time);
   document.getElementById("session-notes").value = "";
+  showSessionFormError("");
   updateSessionDurationPreview();
   document.getElementById("session-dialog").showModal();
 }
@@ -1146,10 +1080,11 @@ function openSessionEditor(sessionId) {
   const start = localDateTimeParts(session.started_at);
   const end = localDateTimeParts(session.ended_at);
   document.getElementById("session-start-date").value = start.date;
-  document.getElementById("session-start-time").value = start.time;
+  setSessionTime("start", start.time);
   document.getElementById("session-end-date").value = end.date || "";
-  document.getElementById("session-end-time").value = end.time || "";
+  setSessionTime("end", end.time || "");
   document.getElementById("session-notes").value = session.notes || "";
+  showSessionFormError("");
   updateSessionDurationPreview();
   document.getElementById("session-dialog").showModal();
 }
@@ -1162,17 +1097,46 @@ function closeSessionEditor() {
 }
 
 function updateSessionDurationPreview() {
-  const start = localDateTimeToIso(
-    document.getElementById("session-start-date").value,
-    document.getElementById("session-start-time").value,
-  );
-  const end = localDateTimeToIso(
-    document.getElementById("session-end-date").value,
-    document.getElementById("session-end-time").value,
-  );
-  document.getElementById("session-duration").textContent = start
-    ? formatDuration(secondsBetween(start, end))
+  const values = getSessionFormValues(false);
+  document.getElementById("session-duration").textContent = values?.startedAt
+    ? formatDuration(secondsBetween(values.startedAt, values.endedAt))
     : "0:00";
+}
+
+function showSessionFormError(message) {
+  const error = document.getElementById("session-form-error");
+  error.textContent = message || "";
+  error.hidden = !message;
+}
+
+function getSessionFormValues(showError = true) {
+  const startDate = document.getElementById("session-start-date").value;
+  const startTime = sessionTime("start");
+  const endDate = document.getElementById("session-end-date").value;
+  const endTime = sessionTime("end");
+  const startHourInput = document.getElementById("session-start-hour");
+  const startMinuteInput = document.getElementById("session-start-minute");
+  const endHourInput = document.getElementById("session-end-hour");
+  const endMinuteInput = document.getElementById("session-end-minute");
+  [startHourInput, startMinuteInput, endHourInput, endMinuteInput].forEach((input) => input.setCustomValidity(""));
+
+  const setError = (message, inputs = [startHourInput, startMinuteInput]) => {
+    inputs.forEach((input) => input.setCustomValidity(message));
+    if (showError) showSessionFormError(message);
+    return null;
+  };
+  if (!startDate || !startTime) return setError("Enter a start date and time.");
+  if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(startTime)) return setError("Enter a valid start hour and minute.");
+  if (Boolean(endDate) !== Boolean(endTime)) return setError("Enter both an end date and an end time.", [endHourInput, endMinuteInput]);
+  if (endTime && !/^([01]\d|2[0-3]):[0-5]\d$/.test(endTime)) return setError("Enter a valid end hour and minute.", [endHourInput, endMinuteInput]);
+
+  const startedAt = localDateTimeToIso(startDate, startTime);
+  const endedAt = endDate && endTime ? localDateTimeToIso(endDate, endTime) : null;
+  if (!startedAt) return setError("Check the start date and time.");
+  if (endDate && endTime && !endedAt) return setError("Check the end date and time.", [endHourInput, endMinuteInput]);
+  if (endedAt && new Date(endedAt) <= new Date(startedAt)) return setError("The end time must be after the start time.", [endHourInput, endMinuteInput]);
+  if (showError) showSessionFormError("");
+  return { startedAt, endedAt };
 }
 
 function confirmAction({ title, message, actionLabel = "Delete" }) {
@@ -1226,19 +1190,38 @@ async function showView(viewName) {
 
 document.querySelectorAll(".nav-item").forEach((button) => {
   button.addEventListener("click", () => {
-    showView(button.dataset.view);
+    runSafely(() => showView(button.dataset.view), "Could not load the view.");
   });
 });
 
 document.getElementById("brand-home").addEventListener("click", () => {
-  showView("tasks");
+  runSafely(() => showView("tasks"), "Could not load the view.");
 });
 
-document.querySelectorAll(".task-tab").forEach((button) => {
-  button.addEventListener("click", () => {
-    state.filter = button.dataset.filter;
-    document.querySelectorAll(".task-tab").forEach((item) => item.classList.toggle("active", item === button));
-    renderTasks();
+function activateTaskFilter(button) {
+  state.filter = button.dataset.filter;
+  document.querySelectorAll(".task-tab").forEach((item) => {
+    const selected = item === button;
+    item.classList.toggle("active", selected);
+    item.setAttribute("aria-selected", String(selected));
+    item.tabIndex = selected ? 0 : -1;
+  });
+  document.getElementById("task-panel-content").setAttribute("aria-labelledby", button.id);
+  renderTasks();
+}
+
+document.querySelectorAll(".task-tab").forEach((button, index, buttons) => {
+  button.addEventListener("click", () => activateTaskFilter(button));
+  button.addEventListener("keydown", (event) => {
+    if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+    event.preventDefault();
+    const nextIndex = event.key === "Home"
+      ? 0
+      : event.key === "End"
+        ? buttons.length - 1
+        : (index + (event.key === "ArrowRight" ? 1 : -1) + buttons.length) % buttons.length;
+    buttons[nextIndex].focus();
+    activateTaskFilter(buttons[nextIndex]);
   });
 });
 
@@ -1261,17 +1244,23 @@ document.getElementById("cancel-new-task").addEventListener("click", () => {
 
 document.getElementById("task-form").addEventListener("submit", async (event) => {
   event.preventDefault();
-  const name = document.getElementById("task-name").value.trim();
-  const color = state.newTaskColor;
-  if (!name) return;
-  await api("/api/tasks", { method: "POST", body: JSON.stringify({ name, color }) });
-  document.getElementById("task-name").value = "";
-  document.getElementById("task-dialog").close();
-  await reloadVisibleData();
+  await withActionLock("create-task", async () => {
+    const name = document.getElementById("task-name").value.trim();
+    const color = state.newTaskColor;
+    if (!name) return;
+    try {
+      await api("/api/tasks", { method: "POST", body: JSON.stringify({ name, color }) });
+      document.getElementById("task-name").value = "";
+      document.getElementById("task-dialog").close();
+      await reloadVisibleData();
+    } catch (error) {
+      reportError(error, "Could not create the task.");
+    }
+  });
 });
 
 document.getElementById("timeline-reports").addEventListener("click", () => {
-  showView("reports");
+  runSafely(() => showView("reports"), "Could not load reports.");
 });
 document.getElementById("timeline-add-session").addEventListener("click", openSessionCreator);
 document.getElementById("bar-chart").addEventListener("pointermove", (event) => {
@@ -1282,96 +1271,156 @@ document.getElementById("bar-chart").addEventListener("pointermove", (event) => 
   }
   showChartTooltip(segment, event);
 });
+document.getElementById("bar-chart").addEventListener("focusin", (event) => {
+  const segment = event.target.closest(".bar-segment");
+  if (!segment) return;
+  const rect = segment.getBoundingClientRect();
+  showChartTooltipAt(segment, rect.left + rect.width / 2, rect.top);
+});
+document.getElementById("bar-chart").addEventListener("focusout", (event) => {
+  if (!event.relatedTarget || !event.relatedTarget.closest?.(".bar-segment")) hideChartTooltip();
+});
 document.getElementById("bar-chart").addEventListener("pointerleave", hideChartTooltip);
 document.querySelectorAll("[data-report-range]").forEach((button) => {
   button.addEventListener("click", async () => {
     state.reportMode = button.dataset.reportRange;
     state.reportDataKey = null;
-    await loadReportData(true);
+    await runSafely(() => loadReportData(true), "Could not load reports.");
   });
 });
 document.getElementById("report-prev-period").addEventListener("click", async () => {
   state.reportDate = reportModeStep(state.reportMode)(state.reportDate, -1);
   state.reportDataKey = null;
-  await loadReportData(true);
+  await runSafely(() => loadReportData(true), "Could not load reports.");
 });
 document.getElementById("report-next-period").addEventListener("click", async () => {
   state.reportDate = reportModeStep(state.reportMode)(state.reportDate, 1);
   state.reportDataKey = null;
-  await loadReportData(true);
+  await runSafely(() => loadReportData(true), "Could not load reports.");
 });
 document.getElementById("report-current-reset").addEventListener("click", async () => {
   state.reportDate = currentReportDateForMode(state.reportMode);
   state.reportDataKey = null;
-  await loadReportData(true);
+  await runSafely(() => loadReportData(true), "Could not load reports.");
 });
 document.getElementById("report-current-period").addEventListener("click", async () => {
   state.reportDate = currentReportDateForMode(state.reportMode);
   state.reportDataKey = null;
-  await loadReportData(true);
+  await runSafely(() => loadReportData(true), "Could not load reports.");
 });
-document.getElementById("report-current-period").addEventListener("keydown", async (event) => {
-  if (!["Enter", " "].includes(event.key)) return;
-  event.preventDefault();
-  state.reportDate = currentReportDateForMode(state.reportMode);
-  state.reportDataKey = null;
-  await loadReportData(true);
+document.getElementById("refresh-admin").addEventListener("click", () => {
+  runSafely(loadAdminData, "Could not load settings.");
 });
-document.getElementById("refresh-admin").addEventListener("click", loadAdminData);
 document.getElementById("timeline-date").addEventListener("click", () => {
   const picker = document.getElementById("timeline-date-picker");
   if (typeof picker.showPicker === "function") picker.showPicker();
   else picker.focus();
 });
 document.getElementById("timeline-date-picker").addEventListener("change", (event) => {
-  if (event.target.value) setTimelineDate(event.target.value);
+  if (event.target.value) runSafely(() => setTimelineDate(event.target.value), "Could not load the timeline.");
 });
 document.getElementById("cancel-task-edit").addEventListener("click", closeTaskEditor);
 document.getElementById("task-edit-form").addEventListener("submit", async (event) => {
   event.preventDefault();
-  const task = selectedTask();
-  if (!task) return;
-  const name = document.getElementById("edit-task-name").value.trim();
-  if (!name) return;
-  await api(`/api/tasks/${task.id}`, {
-    method: "PATCH",
-    body: JSON.stringify({
-      name,
-      color: state.editingTaskColor,
-      notes: document.getElementById("edit-task-notes").value,
-    }),
+  await withActionLock("edit-task", async () => {
+    const task = selectedTask();
+    if (!task) return;
+    const name = document.getElementById("edit-task-name").value.trim();
+    if (!name) return;
+    try {
+      await api(`/api/tasks/${task.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          name,
+          color: state.editingTaskColor,
+          notes: document.getElementById("edit-task-notes").value,
+        }),
+      });
+      closeTaskEditor();
+      await reloadVisibleData();
+    } catch (error) {
+      reportError(error, "Could not save the task.");
+    }
   });
-  closeTaskEditor();
-  await reloadVisibleData();
 });
 document.getElementById("delete-current-task").addEventListener("click", async () => {
-  const task = selectedTask();
-  if (!task) return;
-  const confirmed = await confirmAction({
-    title: "Delete Task",
-    message: `Delete ${task.name}? Sessions for this task will also be removed.`,
-    actionLabel: "Delete Task",
+  await withActionLock("delete-task", async () => {
+    const task = selectedTask();
+    if (!task) return;
+    const confirmed = await confirmAction({
+      title: "Delete Task",
+      message: `Delete ${task.name}? Sessions for this task will also be removed.`,
+      actionLabel: "Delete Task",
+    });
+    if (!confirmed) return;
+    try {
+      await api(`/api/tasks/${task.id}`, { method: "DELETE" });
+      closeTaskEditor();
+      await reloadVisibleData();
+    } catch (error) {
+      reportError(error, "Could not delete the task.");
+    }
   });
-  if (!confirmed) return;
-  await api(`/api/tasks/${task.id}`, { method: "DELETE" });
-  closeTaskEditor();
-  await reloadVisibleData();
 });
 document.getElementById("archive-current-task").addEventListener("click", async () => {
-  const task = selectedTask();
-  if (!task) return;
-  await api(`/api/tasks/${task.id}`, {
-    method: "PATCH",
-    body: JSON.stringify({ archived: !task.archived }),
+  await withActionLock("archive-task", async () => {
+    const task = selectedTask();
+    if (!task) return;
+    try {
+      await api(`/api/tasks/${task.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ archived: !task.archived }),
+      });
+      closeTaskEditor();
+      await reloadVisibleData();
+    } catch (error) {
+      reportError(error, "Could not change the task archive state.");
+    }
   });
-  closeTaskEditor();
-  await reloadVisibleData();
 });
 document.getElementById("cancel-session-edit").addEventListener("click", closeSessionEditor);
 document.getElementById("session-task-button").addEventListener("click", () => {
   const menu = document.getElementById("session-task-menu");
-  const isOpen = menu.classList.toggle("open");
-  document.getElementById("session-task-button").setAttribute("aria-expanded", String(isOpen));
+  if (menu.classList.contains("open")) closeSessionTaskMenu();
+  else openSessionTaskMenu();
+});
+document.getElementById("session-task-button").addEventListener("keydown", (event) => {
+  const menu = document.getElementById("session-task-menu");
+  if (["ArrowDown", "ArrowUp"].includes(event.key)) {
+    event.preventDefault();
+    openSessionTaskMenu();
+    focusSessionTaskOption(sessionTaskMenuIndex + (event.key === "ArrowUp" ? -1 : 1));
+  } else if (["Enter", " "].includes(event.key)) {
+    event.preventDefault();
+    if (menu.classList.contains("open")) closeSessionTaskMenu();
+    else openSessionTaskMenu();
+  } else if (event.key === "Escape") {
+    closeSessionTaskMenu();
+  }
+});
+document.getElementById("session-task-menu").addEventListener("keydown", (event) => {
+  const options = [...document.querySelectorAll(".session-task-option")];
+  if (!options.length) return;
+  if (event.key === "ArrowDown") {
+    event.preventDefault();
+    focusSessionTaskOption(sessionTaskMenuIndex + 1);
+  } else if (event.key === "ArrowUp") {
+    event.preventDefault();
+    focusSessionTaskOption(sessionTaskMenuIndex - 1);
+  } else if (event.key === "Home") {
+    event.preventDefault();
+    focusSessionTaskOption(0);
+  } else if (event.key === "End") {
+    event.preventDefault();
+    focusSessionTaskOption(options.length - 1);
+  } else if (event.key === "Escape") {
+    event.preventDefault();
+    closeSessionTaskMenu();
+    document.getElementById("session-task-button").focus();
+  } else if (event.key === "Enter" || event.key === " ") {
+    event.preventDefault();
+    setSessionTask(Number(options[sessionTaskMenuIndex].dataset.taskId));
+  }
 });
 document.getElementById("session-task-menu").addEventListener("click", (event) => {
   const option = event.target.closest(".session-task-option");
@@ -1384,49 +1433,61 @@ document.addEventListener("click", (event) => {
   closeSessionTaskMenu();
 });
 document.getElementById("session-start-date").addEventListener("input", updateSessionDurationPreview);
-document.getElementById("session-start-time").addEventListener("input", updateSessionDurationPreview);
+document.querySelectorAll("#session-start-hour, #session-start-minute, #session-end-hour, #session-end-minute").forEach((input) => {
+  input.addEventListener("input", updateSessionDurationPreview);
+});
 document.getElementById("session-end-date").addEventListener("input", updateSessionDurationPreview);
-document.getElementById("session-end-time").addEventListener("input", updateSessionDurationPreview);
+document.getElementById("session-form").addEventListener("invalid", () => {
+  showSessionFormError("Check the date and time format.");
+}, true);
 document.getElementById("session-form").addEventListener("submit", async (event) => {
   event.preventDefault();
-  const session = selectedSession();
-  if (!state.isCreatingSession && !session) return;
-  const payload = {
-    task_id: Number(document.getElementById("session-task").value),
-    started_at: localDateTimeToIso(
-      document.getElementById("session-start-date").value,
-      document.getElementById("session-start-time").value,
-    ),
-    ended_at: localDateTimeToIso(
-      document.getElementById("session-end-date").value,
-      document.getElementById("session-end-time").value,
-    ),
-    notes: document.getElementById("session-notes").value,
-  };
-  await api(state.isCreatingSession ? "/api/sessions" : `/api/sessions/${session.id}`, {
-    method: state.isCreatingSession ? "POST" : "PATCH",
-    body: JSON.stringify(payload),
+  await withActionLock("save-session", async () => {
+    const session = selectedSession();
+    if (!state.isCreatingSession && !session) return;
+    const values = getSessionFormValues(true);
+    if (!values) return;
+    const payload = {
+      task_id: Number(document.getElementById("session-task").value),
+      started_at: values.startedAt,
+      ended_at: values.endedAt,
+      notes: document.getElementById("session-notes").value,
+    };
+    try {
+      await api(state.isCreatingSession ? "/api/sessions" : `/api/sessions/${session.id}`, {
+        method: state.isCreatingSession ? "POST" : "PATCH",
+        body: JSON.stringify(payload),
+      });
+      closeSessionEditor();
+      await reloadVisibleData();
+    } catch (error) {
+      reportError(error, "Could not save the session.");
+    }
   });
-  closeSessionEditor();
-  await reloadVisibleData();
 });
 document.getElementById("delete-session").addEventListener("click", async () => {
-  const session = selectedSession();
-  if (!session) return;
-  const confirmed = await confirmAction({
-    title: "Delete Session",
-    message: "Delete this session? This action cannot be undone.",
-    actionLabel: "Delete Session",
+  await withActionLock("delete-session", async () => {
+    const session = selectedSession();
+    if (!session) return;
+    const confirmed = await confirmAction({
+      title: "Delete Session",
+      message: "Delete this session? This action cannot be undone.",
+      actionLabel: "Delete Session",
+    });
+    if (!confirmed) return;
+    try {
+      await api(`/api/sessions/${session.id}`, { method: "DELETE" });
+      closeSessionEditor();
+      await reloadVisibleData();
+    } catch (error) {
+      reportError(error, "Could not delete the session.");
+    }
   });
-  if (!confirmed) return;
-  await api(`/api/sessions/${session.id}`, { method: "DELETE" });
-  closeSessionEditor();
-  await reloadVisibleData();
 });
 
 document.getElementById("active-session-control").addEventListener("click", stopActiveSession);
 
-loadData();
+loadData().catch((error) => reportError(error, "Could not load the dashboard data."));
 setInterval(updateLiveTimers, 1000);
 startAutoRefresh();
 document.addEventListener("visibilitychange", handleVisibilityChange);

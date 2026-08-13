@@ -3,6 +3,7 @@ from __future__ import annotations
 import sqlite3
 import tempfile
 import unittest
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from app import repository
@@ -50,6 +51,46 @@ class RepositoryTestCase(unittest.TestCase):
                 "",
             )
 
+    def test_completed_session_cannot_end_in_the_future(self) -> None:
+        task = self.create_task()
+
+        with self.assertRaisesRegex(ValueError, "cannot end in the future"):
+            repository.create_session(
+                task["id"],
+                "2026-07-11T09:00:00+09:00",
+                "2999-07-11T10:00:00+09:00",
+                "",
+            )
+
+    def test_overlapping_sessions_are_rejected(self) -> None:
+        task = self.create_task()
+        repository.create_session(
+            task["id"],
+            "2020-07-11T09:00:00+09:00",
+            "2020-07-11T10:00:00+09:00",
+            "",
+        )
+
+        with self.assertRaises(repository.SessionOverlapError):
+            repository.create_session(
+                task["id"],
+                "2020-07-11T09:30:00+09:00",
+                "2020-07-11T10:30:00+09:00",
+                "",
+            )
+
+    def test_completed_session_cannot_overlap_active_session(self) -> None:
+        task = self.create_task()
+        repository.create_session(task["id"], "2020-07-11T09:00:00+09:00", None, "")
+
+        with self.assertRaises(repository.SessionOverlapError):
+            repository.create_session(
+                task["id"],
+                "2020-07-11T09:30:00+09:00",
+                "2020-07-11T10:30:00+09:00",
+                "",
+            )
+
     def test_only_one_session_can_be_active(self) -> None:
         first_task = self.create_task("First")
         second_task = self.create_task("Second")
@@ -81,6 +122,32 @@ class RepositoryTestCase(unittest.TestCase):
                 "INSERT INTO sessions (task_id, started_at) VALUES (?, ?)",
                 (task["id"], "2026-07-11T01:00:00+00:00"),
             )
+
+    def test_concurrent_session_starts_leave_one_active_session(self) -> None:
+        first_task = self.create_task("First")
+        second_task = self.create_task("Second")
+
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            results = list(executor.map(repository.start_session, [first_task["id"], second_task["id"]]))
+
+        self.assertTrue(all(results))
+        active = [session for session in repository.list_sessions() if session["ended_at"] is None]
+        self.assertEqual(len(active), 1)
+
+    def test_concurrent_stop_and_start_never_leave_multiple_active_sessions(self) -> None:
+        first_task = self.create_task("First")
+        second_task = self.create_task("Second")
+        repository.start_session(first_task["id"])
+
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            futures = [
+                executor.submit(repository.stop_active_session),
+                executor.submit(repository.start_session, second_task["id"]),
+            ]
+            [future.result() for future in futures]
+
+        active = [session for session in repository.list_sessions() if session["ended_at"] is None]
+        self.assertLessEqual(len(active), 1)
 
     def test_migration_repairs_existing_duplicate_active_sessions(self) -> None:
         task = self.create_task()

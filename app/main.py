@@ -125,6 +125,8 @@ def create_session(payload: SessionUpdate) -> dict:
         )
     except repository.ActiveSessionConflictError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except repository.SessionOverlapError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     if session is None:
@@ -164,6 +166,8 @@ def update_session(session_id: int, payload: SessionUpdate) -> dict:
             payload.notes,
         )
     except repository.ActiveSessionConflictError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except repository.SessionOverlapError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc

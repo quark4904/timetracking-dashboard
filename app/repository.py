@@ -16,6 +16,10 @@ class ActiveSessionConflictError(Exception):
     pass
 
 
+class SessionOverlapError(Exception):
+    pass
+
+
 @contextmanager
 def connect() -> Iterator[sqlite3.Connection]:
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
@@ -51,9 +55,20 @@ def duration_seconds(started_at: str, ended_at: str | None) -> int:
     return max(0, int((ended - started).total_seconds()))
 
 
+def normalize_notes(notes: str) -> str:
+    if not isinstance(notes, str):
+        raise ValueError("notes must be a string")
+    normalized = notes.strip()
+    if len(normalized) > 2000:
+        raise ValueError("notes must be 2000 characters or fewer")
+    return normalized
+
+
 def normalize_to_utc(value: str | None) -> str | None:
     if value is None:
         return None
+    if not isinstance(value, str):
+        raise ValueError("datetime values must be strings")
     parsed = datetime.fromisoformat(value)
     if parsed.tzinfo is None or parsed.utcoffset() is None:
         raise ValueError("datetime values must include a timezone")
@@ -61,6 +76,8 @@ def normalize_to_utc(value: str | None) -> str | None:
 
 
 def normalize_task_name(name: str) -> str:
+    if not isinstance(name, str):
+        raise ValueError("name must be a string")
     normalized = name.strip()
     if not normalized:
         raise ValueError("name must not be blank")
@@ -70,6 +87,8 @@ def normalize_task_name(name: str) -> str:
 
 
 def validate_color(color: str) -> str:
+    if not isinstance(color, str):
+        raise ValueError("color must be a string")
     if not COLOR_PATTERN.fullmatch(color):
         raise ValueError("color must be a 6-digit hex value")
     return color
@@ -137,6 +156,12 @@ def init_db() -> None:
             WHERE ended_at IS NULL
             """
         )
+        conn.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_sessions_time_range
+            ON sessions (started_at, ended_at)
+            """
+        )
 
 
 def row_to_dict(row: sqlite3.Row) -> dict:
@@ -193,11 +218,13 @@ def update_task(
         fields.append("color = ?")
         values.append(validate_color(color))
     if archived is not None:
+        if not isinstance(archived, bool):
+            raise ValueError("archived must be a boolean")
         fields.append("archived = ?")
         values.append(1 if archived else 0)
     if notes is not None:
         fields.append("notes = ?")
-        values.append(notes.strip())
+        values.append(normalize_notes(notes))
     if not fields:
         return get_task(task_id)
     values.append(task_id)
@@ -261,13 +288,10 @@ def create_session(
     ended_utc = normalize_to_utc(ended_at)
     if started_utc is None:
         raise ValueError("started_at is required")
-    if ended_utc is not None and duration_seconds(started_utc, ended_utc) <= 0:
-        raise ValueError("ended_at must be after started_at")
-    if ended_utc is None and parse_stored_datetime(started_utc) > datetime.now(timezone.utc):
-        raise ValueError("an active session cannot start in the future")
+    validate_session_times(started_utc, ended_utc)
+    normalized_notes = normalize_notes(notes)
     with connect() as conn:
-        if ended_utc is None:
-            conn.execute("BEGIN IMMEDIATE")
+        conn.execute("BEGIN IMMEDIATE")
         task = conn.execute("SELECT id FROM tasks WHERE id = ?", (task_id,)).fetchone()
         if not task:
             return None
@@ -275,18 +299,21 @@ def create_session(
             "SELECT 1 FROM sessions WHERE ended_at IS NULL"
         ).fetchone():
             raise ActiveSessionConflictError("another session is already active")
+        if session_overlaps(conn, started_utc, ended_utc):
+            raise SessionOverlapError("session overlaps an existing session")
         cursor = conn.execute(
             """
             INSERT INTO sessions (task_id, started_at, ended_at, notes)
             VALUES (?, ?, ?, ?)
             """,
-            (task_id, started_utc, ended_utc, notes.strip()),
+            (task_id, started_utc, ended_utc, normalized_notes),
         )
         return get_session(cursor.lastrowid, conn)
 
 
 def stop_active_session() -> dict | None:
     with connect() as conn:
+        conn.execute("BEGIN IMMEDIATE")
         row = conn.execute(
             "SELECT * FROM sessions WHERE ended_at IS NULL ORDER BY started_at DESC, id DESC LIMIT 1"
         ).fetchone()
@@ -315,13 +342,10 @@ def update_session(
     ended_utc = normalize_to_utc(ended_at)
     if started_utc is None:
         raise ValueError("started_at is required")
-    if ended_utc is not None and duration_seconds(started_utc, ended_utc) <= 0:
-        raise ValueError("ended_at must be after started_at")
-    if ended_utc is None and parse_stored_datetime(started_utc) > datetime.now(timezone.utc):
-        raise ValueError("an active session cannot start in the future")
+    validate_session_times(started_utc, ended_utc)
+    normalized_notes = normalize_notes(notes)
     with connect() as conn:
-        if ended_utc is None:
-            conn.execute("BEGIN IMMEDIATE")
+        conn.execute("BEGIN IMMEDIATE")
         task = conn.execute("SELECT id FROM tasks WHERE id = ?", (task_id,)).fetchone()
         if not task:
             return None
@@ -333,13 +357,15 @@ def update_session(
             (session_id,),
         ).fetchone():
             raise ActiveSessionConflictError("another session is already active")
+        if session_overlaps(conn, started_utc, ended_utc, exclude_session_id=session_id):
+            raise SessionOverlapError("session overlaps an existing session")
         conn.execute(
             """
             UPDATE sessions
             SET task_id = ?, started_at = ?, ended_at = ?, notes = ?
             WHERE id = ?
             """,
-            (task_id, started_utc, ended_utc, notes.strip(), session_id),
+            (task_id, started_utc, ended_utc, normalized_notes, session_id),
         )
         return get_session(session_id, conn)
 
@@ -371,6 +397,38 @@ def get_session(session_id: int, conn: sqlite3.Connection | None = None) -> dict
     finally:
         if close_conn:
             conn.close()
+
+
+def validate_session_times(started_at: str, ended_at: str | None) -> None:
+    started = parse_stored_datetime(started_at)
+    ended = parse_stored_datetime(ended_at)
+    now = datetime.now(timezone.utc)
+    if started is None:
+        raise ValueError("started_at is required")
+    if started > now:
+        raise ValueError("a session cannot start in the future")
+    if ended is not None:
+        if ended <= started:
+            raise ValueError("ended_at must be after started_at")
+        if ended > now:
+            raise ValueError("a completed session cannot end in the future")
+
+
+def session_overlaps(
+    conn: sqlite3.Connection,
+    started_at: str,
+    ended_at: str | None,
+    exclude_session_id: int | None = None,
+) -> bool:
+    params: list[str | int] = [ended_at or utc_now(), started_at]
+    where = "s.started_at < ? AND (s.ended_at IS NULL OR s.ended_at > ?)"
+    if exclude_session_id is not None:
+        where += " AND s.id != ?"
+        params.append(exclude_session_id)
+    return conn.execute(
+        f"SELECT 1 FROM sessions s WHERE {where} LIMIT 1",
+        tuple(params),
+    ).fetchone() is not None
 
 
 def list_sessions(start: str | None = None, end: str | None = None) -> list[dict]:

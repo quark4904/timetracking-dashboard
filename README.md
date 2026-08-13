@@ -24,7 +24,18 @@ python3 dev_server.py
 저장소 테스트는 별도 테스트 라이브러리 없이 실행할 수 있습니다.
 
 ```bash
-python3 -m unittest
+python3 -m unittest discover -v
+node tests/test_frontend_math.mjs
+```
+
+`tests/test_http_api.py`는 로컬 개발 서버 소켓을 사용하므로 샌드박스 환경에서는 권한 확장이 필요할 수 있습니다.
+
+## 정적 파일 캐시
+
+CSS, 메인 JavaScript, JavaScript 모듈의 SHA-256 앞 12자리를 정적 URL의 쿼리스트링에 자동 반영합니다.
+
+```bash
+python3 scripts/update_static_versions.py
 ```
 
 ## Docker 실행
@@ -44,6 +55,7 @@ FastAPI는 이 프로젝트에 잘 맞습니다. API, 정적 파일 서빙, SQLi
 - 모든 시각은 UTC로 저장하고 화면과 리포트에서는 `Asia/Seoul` 기준으로 표시합니다.
 - 자정을 넘는 세션은 일·주·월·연 리포트의 각 시간 구간에 나누어 집계합니다.
 - 동시에 실행 중인 세션은 하나만 허용합니다. 새 작업을 시작하면 기존 활성 세션이 종료됩니다.
+- 수동으로 입력한 세션은 기존 세션과 시간이 겹치지 않도록 거부합니다.
 - 주간 리포트는 일요일을 한 주의 시작으로 사용합니다.
 
 ## 운영
@@ -52,9 +64,9 @@ FastAPI는 이 프로젝트에 잘 맞습니다. API, 정적 파일 서빙, SQLi
 - 실행 중 백업할 때는 단순 파일 복사보다 SQLite 온라인 백업 기능을 사용해야 합니다.
 - 백업 파일은 애플리케이션의 `data` 볼륨과 다른 저장소에 보관하는 것을 권장합니다.
 
-## 추가로 정하면 좋은 것
+## 운영 결정 사항
 
-- 인증: Cloudflare Access를 붙일지, 앱 자체 로그인/PIN을 둘지 결정이 필요합니다.
+- 외부 인증은 Cloudflare Access가 담당하며 애플리케이션 로그인/PIN은 사용하지 않습니다.
 - 데이터 모델: 프로젝트/폴더, 태그, 메모, 수동 시간 수정, 휴지통 복구 여부를 정하면 리포트가 좋아집니다.
 - 백업: SQLite 파일을 주기적으로 백업할 위치와 보관 기간을 정하는 것이 좋습니다.
 - 배포 운영: Cloudflare Tunnel 서비스명, 도메인, systemd/docker compose 자동 재시작 정책을 서버에서 확정하면 됩니다.

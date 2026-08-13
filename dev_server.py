@@ -35,7 +35,7 @@ class Handler(BaseHTTPRequestHandler):
                     query.get("start", [None])[0],
                     query.get("end", [None])[0],
                 ))
-            except ValueError as exc:
+            except (KeyError, TypeError, ValueError) as exc:
                 return self.send_error(400, str(exc))
         if parsed.path == "/api/sessions/active":
             return self.send_json(repository.get_active_session())
@@ -59,20 +59,30 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self) -> None:
         parsed = urlparse(self.path)
         if parsed.path == "/api/tasks":
-            payload = self.read_json()
+            payload = self.read_payload()
+            if payload is None:
+                return
             try:
                 task = repository.create_task(payload["name"], payload["color"])
-            except ValueError as exc:
+            except (KeyError, ValueError) as exc:
                 return self.send_error(400, str(exc))
             return self.send_json(task, status=201)
         if parsed.path == "/api/tasks/reorder":
-            payload = self.read_json()
-            tasks = repository.reorder_tasks([int(task_id) for task_id in payload.get("task_ids", [])])
+            payload = self.read_payload()
+            if payload is None:
+                return
+            try:
+                task_ids = [int(task_id) for task_id in payload.get("task_ids", [])]
+            except (TypeError, ValueError) as exc:
+                return self.send_error(400, str(exc))
+            tasks = repository.reorder_tasks(task_ids)
             if tasks is None:
                 return self.send_error(404, "Task not found")
             return self.send_json(tasks)
         if parsed.path == "/api/sessions":
-            payload = self.read_json()
+            payload = self.read_payload()
+            if payload is None:
+                return
             try:
                 session = repository.create_session(
                     int(payload["task_id"]),
@@ -82,13 +92,18 @@ class Handler(BaseHTTPRequestHandler):
                 )
             except repository.ActiveSessionConflictError as exc:
                 return self.send_error(409, str(exc))
-            except ValueError as exc:
+            except repository.SessionOverlapError as exc:
+                return self.send_error(409, str(exc))
+            except (KeyError, TypeError, ValueError) as exc:
                 return self.send_error(400, str(exc))
             if session is None:
                 return self.send_error(404, "Task not found")
             return self.send_json(session, status=201)
         if parsed.path.endswith("/start") and parsed.path.startswith("/api/tasks/"):
-            task_id = int(parsed.path.split("/")[3])
+            try:
+                task_id = int(parsed.path.split("/")[3])
+            except (IndexError, ValueError):
+                return self.send_error(400, "Task id must be an integer")
             session = repository.start_session(task_id)
             if session is None:
                 return self.send_error(404, "Task not found")
@@ -103,8 +118,13 @@ class Handler(BaseHTTPRequestHandler):
     def do_PATCH(self) -> None:
         parsed = urlparse(self.path)
         if parsed.path.startswith("/api/sessions/"):
-            session_id = int(parsed.path.split("/")[3])
-            payload = self.read_json()
+            try:
+                session_id = int(parsed.path.split("/")[3])
+            except (IndexError, ValueError):
+                return self.send_error(400, "Session id must be an integer")
+            payload = self.read_payload()
+            if payload is None:
+                return
             try:
                 session = repository.update_session(
                     session_id,
@@ -115,14 +135,21 @@ class Handler(BaseHTTPRequestHandler):
                 )
             except repository.ActiveSessionConflictError as exc:
                 return self.send_error(409, str(exc))
-            except ValueError as exc:
+            except repository.SessionOverlapError as exc:
+                return self.send_error(409, str(exc))
+            except (KeyError, TypeError, ValueError) as exc:
                 return self.send_error(400, str(exc))
             if session is None:
                 return self.send_error(404, "Session not found")
             return self.send_json(session)
         if parsed.path.startswith("/api/tasks/"):
-            task_id = int(parsed.path.split("/")[3])
-            payload = self.read_json()
+            try:
+                task_id = int(parsed.path.split("/")[3])
+            except (IndexError, ValueError):
+                return self.send_error(400, "Task id must be an integer")
+            payload = self.read_payload()
+            if payload is None:
+                return
             try:
                 task = repository.update_task(
                     task_id,
@@ -131,7 +158,7 @@ class Handler(BaseHTTPRequestHandler):
                     payload.get("archived"),
                     payload.get("notes"),
                 )
-            except ValueError as exc:
+            except (TypeError, ValueError) as exc:
                 return self.send_error(400, str(exc))
             if task is None:
                 return self.send_error(404, "Task not found")
@@ -141,14 +168,18 @@ class Handler(BaseHTTPRequestHandler):
     def do_DELETE(self) -> None:
         parsed = urlparse(self.path)
         if parsed.path.startswith("/api/tasks/"):
-            task_id = int(parsed.path.split("/")[3])
+            try:
+                task_id = int(parsed.path.split("/")[3])
+            except (IndexError, ValueError):
+                return self.send_error(400, "Task id must be an integer")
             if not repository.delete_task(task_id):
                 return self.send_error(404, "Task not found")
-            self.send_response(204)
-            self.end_headers()
-            return
+            return self.send_json({"ok": True})
         if parsed.path.startswith("/api/sessions/"):
-            session_id = int(parsed.path.split("/")[3])
+            try:
+                session_id = int(parsed.path.split("/")[3])
+            except (IndexError, ValueError):
+                return self.send_error(400, "Session id must be an integer")
             if not repository.delete_session(session_id):
                 return self.send_error(404, "Session not found")
             self.send_response(204)
@@ -160,7 +191,17 @@ class Handler(BaseHTTPRequestHandler):
         length = int(self.headers.get("Content-Length", "0"))
         if length == 0:
             return {}
-        return json.loads(self.rfile.read(length).decode("utf-8"))
+        payload = json.loads(self.rfile.read(length).decode("utf-8"))
+        if not isinstance(payload, dict):
+            raise ValueError("JSON body must be an object")
+        return payload
+
+    def read_payload(self) -> dict | None:
+        try:
+            return self.read_json()
+        except (UnicodeDecodeError, ValueError, json.JSONDecodeError) as exc:
+            self.send_error(400, f"Invalid JSON: {exc}")
+            return None
 
     def send_json(self, payload: object, status: int = 200) -> None:
         body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
@@ -169,6 +210,12 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
+
+    def send_error(self, code: int, message: str | None = None, explain: str | None = None) -> None:
+        if self.path.startswith("/api/"):
+            self.send_json({"detail": message or "Request failed"}, status=code)
+            return
+        super().send_error(code, message, explain)
 
     def serve_file(self, path: Path, head_only: bool = False) -> None:
         try:
