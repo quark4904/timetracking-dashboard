@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Timetracking Dashboard</title>
     <link rel="icon" href="/static/favicon.svg?v=20260708-1" type="image/svg+xml" />
-    <link rel="stylesheet" href="/static/styles.css?v=20260806-03" />
+    <link rel="stylesheet" href="/static/styles.css?v=20260813-01" />
   </head>
   <body>
     <div class="app-shell">
@@ -280,7 +280,7 @@
 
         <div class="session-form-body">
           <section class="session-time-card">
-            <label>
+            <label class="session-start-time-field">
               <span>From</span>
               <input
                 class="session-time-input"
@@ -292,9 +292,8 @@
                 placeholder="00:00"
                 required
               />
-              <input class="session-date-input" id="session-start-date" type="date" required />
             </label>
-            <label>
+            <label class="session-end-time-field">
               <span>To</span>
               <input
                 class="session-time-input"
@@ -305,8 +304,20 @@
                 pattern="([01][0-9]|2[0-3]):[0-5][0-9]"
                 placeholder="00:00"
               />
-              <input class="session-date-input" id="session-end-date" type="date" />
             </label>
+            <input
+              class="session-date-input session-start-date-field"
+              id="session-start-date"
+              type="date"
+              aria-label="From date"
+              required
+            />
+            <input
+              class="session-date-input session-end-date-field"
+              id="session-end-date"
+              type="date"
+              aria-label="To date"
+            />
             <div class="session-duration-row">
               <span>Duration</span>
               <strong id="session-duration">0:00</strong>

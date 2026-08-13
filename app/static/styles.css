@@ -1726,6 +1726,10 @@ dialog::backdrop {
 .session-time-card {
   display: grid;
   grid-template-columns: 1fr 1fr;
+  grid-template-areas:
+    "start-time end-time"
+    "start-date end-date"
+    "duration duration";
   overflow: hidden;
 }
 
@@ -1736,8 +1740,28 @@ dialog::backdrop {
   gap: 6px;
 }
 
-.session-time-card label:first-child {
+.session-start-time-field {
+  grid-area: start-time;
   border-right: 1px solid var(--line-soft);
+}
+
+.session-end-time-field {
+  grid-area: end-time;
+}
+
+.session-time-card > .session-start-date-field,
+.session-time-card > .session-end-date-field {
+  align-self: start;
+  padding: 0 20px 14px;
+}
+
+.session-start-date-field {
+  grid-area: start-date;
+  border-right: 1px solid var(--line-soft);
+}
+
+.session-end-date-field {
+  grid-area: end-date;
 }
 
 .session-time-card label span,
@@ -1767,6 +1791,7 @@ dialog::backdrop {
 }
 
 .session-duration-row {
+  grid-area: duration;
   grid-column: 1 / -1;
   border-top: 1px solid var(--line-soft);
   padding: 16px 20px;
