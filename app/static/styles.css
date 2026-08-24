@@ -748,13 +748,21 @@ body.timeline-active #timeline-view .timeline-board {
     font-size: 28px;
   }
 
-  #reports-view .year-picker button {
+  #reports-view .year-picker > .period-arrow,
+  #reports-view .year-picker > .period-today {
     width: 34px;
     min-height: 34px;
     padding: 0;
     overflow: hidden;
     position: relative;
     color: var(--muted);
+  }
+
+  #reports-view .period-current {
+    width: auto;
+    min-width: max-content;
+    overflow: visible;
+    white-space: nowrap;
   }
 
   #reports-view .period-arrow {
