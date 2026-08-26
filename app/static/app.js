@@ -47,6 +47,15 @@ const state = {
   timelineShouldCenterNow: true,
 };
 
+if ("scrollRestoration" in history) history.scrollRestoration = "manual";
+
+function resetInitialScroll() {
+  if (window.scrollY > 0) window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+}
+
+resetInitialScroll();
+window.addEventListener("pageshow", resetInitialScroll, { once: true });
+
 const fmt = new Intl.DateTimeFormat("en", { month: "long", day: "numeric", year: "numeric" });
 state.reportDate = kstDateKey(new Date());
 state.timelineDate = state.reportDate;

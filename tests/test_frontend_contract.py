@@ -46,6 +46,14 @@ class FrontendContractTestCase(unittest.TestCase):
         self.assertIn("apiLatest(\"timeline-sessions\"", self.js)
         self.assertIn("apiLatest(\"report-sessions\"", self.js)
 
+    def test_ios_mobile_viewport_contract_is_present(self) -> None:
+        self.assertIn('viewport-fit=cover', self.html)
+        self.assertIn('min-height: 100svh', self.css)
+        self.assertIn('min-height: 100dvh', self.css)
+        self.assertIn('safe-area-inset-top', self.css)
+        self.assertIn('history.scrollRestoration = "manual"', self.js)
+        self.assertIn('window.addEventListener("pageshow", resetInitialScroll', self.js)
+
 
 if __name__ == "__main__":
     unittest.main()

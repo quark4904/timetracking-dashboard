@@ -23,9 +23,14 @@
   box-sizing: border-box;
 }
 
+html {
+  min-height: 100%;
+  background: var(--bg);
+}
+
 body {
   margin: 0;
-  min-height: 100vh;
+  min-height: 100%;
   background: var(--bg);
   color: var(--text);
 }
@@ -61,10 +66,16 @@ textarea:focus-visible {
 }
 
 .app-shell {
-  min-height: 100vh;
+  min-height: 100svh;
   display: grid;
   grid-template-columns: 172px minmax(0, 1fr);
   background: var(--bg);
+}
+
+@supports (min-height: 100dvh) {
+  .app-shell {
+    min-height: 100dvh;
+  }
 }
 
 .sidebar {
@@ -2274,7 +2285,7 @@ dialog::backdrop {
   }
 
   .content {
-    padding: 24px 14px 22px;
+    padding: max(24px, env(safe-area-inset-top)) 14px 22px;
   }
 
   .content > .view:not(#tasks-view).active {
