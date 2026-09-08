@@ -111,11 +111,25 @@ export function localDateTimeParts(value) {
   };
 }
 
-export function localDateTimeToIso(date, time) {
+export function localDateTimeToIso(date, time, original = null) {
   if (!date || !time || !/^\d{4}-\d{2}-\d{2}$/.test(date) || !/^([01]\d|2[0-3]):[0-5]\d$/.test(time)) return null;
   const value = new Date(`${date}T${time}:00+09:00`);
   if (Number.isNaN(value.getTime())) return null;
   const parts = localDateTimeParts(value);
   if (!parts || parts.date !== date || parts.time !== time) return null;
+  const originalParts = localDateTimeParts(original);
+  // Keep the exact stored precision when the displayed date/time was not changed.
+  if (originalParts && originalParts.date === date && originalParts.time === time) return original;
   return value.toISOString();
+}
+
+export function defaultSessionTimes(date, now = new Date()) {
+  if (date === kstDateKey(now)) {
+    const end = new Date(Math.floor(now.getTime() / 60000) * 60000);
+    return {
+      start: localDateTimeParts(new Date(end.getTime() - 3600000)),
+      end: localDateTimeParts(end),
+    };
+  }
+  return { start: { date, time: "09:00" }, end: { date, time: "10:00" } };
 }

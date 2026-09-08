@@ -19,6 +19,8 @@ FastAPI 의존성을 설치하기 어려운 환경에서는 표준 라이브러�
 python3 dev_server.py
 ```
 
+개발 서버는 기본적으로 `127.0.0.1:8010`에서만 접근할 수 있습니다. 다른 장치의 직접 접근이 필요한 경우에만 `TIMETRACKING_HOST`를 설정합니다. 직접 접근에는 Cloudflare Access 인증이 적용되지 않습니다.
+
 ## 테스트
 
 저장소 테스트는 별도 테스트 라이브러리 없이 실행할 수 있습니다.
@@ -30,9 +32,22 @@ node tests/test_frontend_math.mjs
 
 `tests/test_http_api.py`는 로컬 개발 서버 소켓을 사용하므로 샌드박스 환경에서는 권한 확장이 필요할 수 있습니다.
 
+배포용 FastAPI 검증과 브라우저 회귀 테스트는 가상환경에 테스트 의존성을 설치한 뒤 실행합니다. 운영 Docker 이미지에는 테스트 의존성을 설치하지 않습니다.
+
+```bash
+pip install -r requirements-test.txt
+python -m unittest discover -v
+python -m playwright install chromium
+python -m unittest tests.browser_checks -v
+```
+
+FastAPI 테스트는 `fastapi` 또는 `httpx`가 없으면 skip으로 표시됩니다. 브라우저 테스트는 별도로 실행하며 Chromium에서 시각 보존·월말 이동·지연 응답·새 세션 저장을, 모바일 뷰포트에서 편집·Tab 순서·Stop 동작을 확인합니다. 모든 API/브라우저 테스트는 임시 DB를 사용합니다. 모바일 테스트도 Chromium 엔진이므로 실제 iOS Safari 검증을 대체하지 않습니다.
+
 ## 정적 파일 캐시
 
 CSS, 메인 JavaScript, JavaScript 모듈의 SHA-256 앞 12자리를 정적 URL의 쿼리스트링에 자동 반영합니다.
+
+Docker 빌드에서는 자동 실행됩니다. 로컬 정적 파일 수정 후에는 아래 명령을 실행합니다. `date-time.mjs` → `reporting.mjs` → `app.js` → `index.html` 순서로 모듈 간 참조까지 갱신합니다.
 
 ```bash
 python3 scripts/update_static_versions.py
@@ -57,6 +72,12 @@ FastAPI는 이 프로젝트에 잘 맞습니다. API, 정적 파일 서빙, SQLi
 - 동시에 실행 중인 세션은 하나만 허용합니다. 새 작업을 시작하면 기존 활성 세션이 종료됩니다.
 - 수동으로 입력한 세션은 기존 세션과 시간이 겹치지 않도록 거부합니다.
 - 주간 리포트는 일요일을 한 주의 시작으로 사용합니다.
+- 세션 편집 시 변경하지 않은 시간 필드는 원본의 초·소수점 정밀도를 보존합니다. 직접 변경한 시간 필드만 분 단위로 저장합니다.
+- 오늘의 수동 세션 기본값은 현재 분까지의 지난 1시간이며, 기존 세션과 겹치면 저장이 거부됩니다.
+
+## 코드 검토 기록
+
+[2026-09-08 검토 및 수정 기록](docs/code-review-2026-09-08.md)에 발견 사항, 수정 방향과 검증 결과를 정리했습니다.
 
 ## 운영
 

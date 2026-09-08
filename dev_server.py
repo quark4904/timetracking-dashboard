@@ -240,7 +240,7 @@ class Handler(BaseHTTPRequestHandler):
 
 def main() -> None:
     repository.init_db()
-    host = os.getenv("TIMETRACKING_HOST", "0.0.0.0")
+    host = os.getenv("TIMETRACKING_HOST", "127.0.0.1")
     port = int(os.getenv("TIMETRACKING_PORT", "8010"))
     server = ThreadingHTTPServer((host, port), Handler)
     print(f"Serving timetracking dashboard on http://{host}:{port}")

@@ -30,6 +30,16 @@ def main() -> None:
         raise SystemExit(f"expected one cache reference for /static/styles.css, found {count}")
 
     app_path = ROOT / "app" / "static" / "app.js"
+    reporting_path = ROOT / "app" / "static" / "modules" / "reporting.mjs"
+    reporting = reporting_path.read_text()
+    reporting, count = update_reference(
+        reporting, "./date-time.mjs", asset_version(reporting_path.with_name("date-time.mjs"))
+    )
+    if count != 1:
+        raise SystemExit(f"expected one cache reference for ./date-time.mjs, found {count}")
+    if reporting != reporting_path.read_text():
+        reporting_path.write_text(reporting)
+
     app = app_path.read_text()
     module_references = {
         "./modules/date-time.mjs": ROOT / "app" / "static" / "modules" / "date-time.mjs",

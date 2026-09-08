@@ -8,7 +8,7 @@ import {
   kstDateKey,
   startOfWeekKey,
   overlapSeconds,
-} from "./date-time.mjs";
+} from "./date-time.mjs?v=62e6b0017bd5";
 
 const monthNames = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
 const weekdayNames = ["SUNDAY", "MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY"];
@@ -41,8 +41,8 @@ export function reportRangeFor(mode, value) {
 export function reportModeStep(mode) {
   if (mode === "day") return (value, amount) => addDays(value, amount);
   if (mode === "week") return (value, amount) => addDays(value, amount * 7);
-  if (mode === "month") return addMonths;
-  return addYears;
+  if (mode === "month") return (value, amount) => addMonths(reportRangeFor(mode, value).start, amount);
+  return (value, amount) => addYears(reportRangeFor(mode, value).start, amount);
 }
 
 export function reportPeriodLabel(mode, value, compact = false) {

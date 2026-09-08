@@ -9,6 +9,8 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY app ./app
+COPY scripts/update_static_versions.py ./scripts/update_static_versions.py
+RUN python scripts/update_static_versions.py
 
 EXPOSE 8000
 

@@ -2,6 +2,7 @@ import {
   addDays,
   dateFromKey,
   dateKey,
+  defaultSessionTimes,
   formatDuration,
   formatLiveDuration,
   kstDateBoundary,
@@ -12,7 +13,7 @@ import {
   overlapSeconds,
   secondsBetween,
   timeFmt,
-} from "./modules/date-time.mjs?v=1b6e1e7903ff";
+} from "./modules/date-time.mjs?v=62e6b0017bd5";
 import {
   createReportBuckets,
   currentReportDateForMode,
@@ -21,7 +22,7 @@ import {
   reportPeriodLabel,
   reportRangeFor,
   reportSessionSegments,
-} from "./modules/reporting.mjs?v=9b60d8ef26b7";
+} from "./modules/reporting.mjs?v=5cc2dc1e90a5";
 
 const state = {
   tasks: [],
@@ -37,6 +38,7 @@ const state = {
   filter: "active",
   activeView: "tasks",
   editingSessionId: null,
+  editingSessionOriginal: null,
   isCreatingSession: false,
   isTaskEditing: false,
   editingTaskId: null,
@@ -172,15 +174,16 @@ function runSafely(action, fallback) {
 }
 
 async function loadData() {
+  const version = nextRequestVersion("dashboard-data");
   const todayRange = monthRangeForDateKey(kstDateKey(new Date()));
-  const [tasks, sessions, taskSessions, active] = await Promise.all([
+  const [tasks, , taskSessions, active] = await Promise.all([
     api("/api/tasks?include_archived=true"),
     fetchTimelineSessions(true),
     api(sessionsPathForRange(todayRange.start, todayRange.end)),
     fetchActiveSession(),
   ]);
+  if (requestVersions.get("dashboard-data") !== version) return;
   state.tasks = tasks;
-  state.sessions = sessions;
   state.taskSessions = taskSessions;
   state.activeSession = active;
   render();
@@ -214,15 +217,18 @@ function sessionsPathForRange(start, end) {
 
 async function fetchTimelineSessions(force = false) {
   const range = monthRangeForDateKey(state.timelineDate);
-  if (!force && state.sessionsMonth === range.key) return state.sessions;
+  if (!force && state.sessionsMonth === range.key) {
+    nextRequestVersion("timeline-sessions");
+    return;
+  }
   const sessions = await apiLatest("timeline-sessions", sessionsPathForRange(range.start, range.end));
-  if (sessions === null) return state.sessions;
+  if (sessions === null || monthRangeForDateKey(state.timelineDate).key !== range.key) return;
+  state.sessions = sessions;
   state.sessionsMonth = range.key;
-  return sessions;
 }
 
 async function loadTimelineSessions(force = false) {
-  state.sessions = await fetchTimelineSessions(force);
+  await fetchTimelineSessions(force);
   renderTasks();
   renderTimeline();
 }
@@ -1056,18 +1062,13 @@ function setSessionTime(prefix, value) {
 function openSessionCreator() {
   const task = state.tasks.find((item) => !item.archived) || state.tasks[0];
   if (!task) return;
-  const now = new Date();
-  const nowParts = kstParts(now);
-  const startTime = kstDateKey(now) === state.timelineDate
-    ? `${String(nowParts.hour).padStart(2, "0")}:${nowParts.minute}`
-    : "09:00";
-  const startIso = localDateTimeToIso(state.timelineDate, startTime);
-  const end = localDateTimeParts(new Date(new Date(startIso).getTime() + 3600000));
+  const { start, end } = defaultSessionTimes(state.timelineDate);
   state.editingSessionId = null;
+  state.editingSessionOriginal = null;
   setSessionDialogMode("create");
   renderSessionTaskPicker({ task_id: task.id });
-  document.getElementById("session-start-date").value = state.timelineDate;
-  setSessionTime("start", startTime);
+  document.getElementById("session-start-date").value = start.date;
+  setSessionTime("start", start.time);
   document.getElementById("session-end-date").value = end.date;
   setSessionTime("end", end.time);
   document.getElementById("session-notes").value = "";
@@ -1084,6 +1085,7 @@ function openSessionEditor(sessionId) {
   ].find((item) => item.id === sessionId);
   if (!session) return;
   state.editingSessionId = sessionId;
+  state.editingSessionOriginal = { ...session };
   setSessionDialogMode("edit");
   renderSessionTaskPicker(session);
   const start = localDateTimeParts(session.started_at);
@@ -1100,6 +1102,7 @@ function openSessionEditor(sessionId) {
 
 function closeSessionEditor() {
   state.editingSessionId = null;
+  state.editingSessionOriginal = null;
   state.isCreatingSession = false;
   closeSessionTaskMenu();
   document.getElementById("session-dialog").close();
@@ -1139,8 +1142,9 @@ function getSessionFormValues(showError = true) {
   if (Boolean(endDate) !== Boolean(endTime)) return setError("Enter both an end date and an end time.", [endHourInput, endMinuteInput]);
   if (endTime && !/^([01]\d|2[0-3]):[0-5]\d$/.test(endTime)) return setError("Enter a valid end hour and minute.", [endHourInput, endMinuteInput]);
 
-  const startedAt = localDateTimeToIso(startDate, startTime);
-  const endedAt = endDate && endTime ? localDateTimeToIso(endDate, endTime) : null;
+  const original = state.editingSessionOriginal;
+  const startedAt = localDateTimeToIso(startDate, startTime, original?.started_at);
+  const endedAt = endDate && endTime ? localDateTimeToIso(endDate, endTime, original?.ended_at) : null;
   if (!startedAt) return setError("Check the start date and time.");
   if (endDate && endTime && !endedAt) return setError("Check the end date and time.", [endHourInput, endMinuteInput]);
   if (endedAt && new Date(endedAt) <= new Date(startedAt)) return setError("The end time must be after the start time.", [endHourInput, endMinuteInput]);
