@@ -801,7 +801,9 @@ function renderReports() {
   document.getElementById("report-next-period").setAttribute("aria-label", `Next period, ${nextPeriodLabel}`);
   document.getElementById("report-next-period").title = nextPeriodLabel;
   document.querySelectorAll("[data-report-range]").forEach((button) => {
-    button.classList.toggle("active", button.dataset.reportRange === state.reportMode);
+    const active = button.dataset.reportRange === state.reportMode;
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-pressed", String(active));
   });
 
   const maxBucket = Math.max(3600, ...buckets.map((bucket) => bucket.total));
@@ -831,7 +833,7 @@ function renderReports() {
     .filter((task) => totalByTask.has(task.id))
     .map((task) => ({ ...task, seconds: totalByTask.get(task.id) }))
     .sort((a, b) => b.seconds - a.seconds);
-  document.getElementById("task-breakdown").innerHTML = breakdown.map((task) => {
+  document.getElementById("task-breakdown").innerHTML = breakdown.length ? breakdown.map((task) => {
     const pct = total ? Math.round((task.seconds / total) * 100) : 0;
     return `
       <div class="breakdown-row" style="--task-color:${task.color}">
@@ -846,11 +848,11 @@ function renderReports() {
         <div class="task-time">${formatDuration(task.seconds)}</div>
       </div>
     `;
-  }).join("");
+  }).join("") : '<p class="report-empty">No tracked time in this period yet.</p>';
 
   const sessionSegments = reportSessionSegments(reportSessions, range);
   const sessionList = document.getElementById("session-list");
-  sessionList.innerHTML = Array.from(groupedSessionsByDate(sessionSegments).entries()).map(([date, sessions]) => {
+  sessionList.innerHTML = sessionSegments.length ? Array.from(groupedSessionsByDate(sessionSegments).entries()).map(([date, sessions]) => {
     const dayTotal = sessions.reduce((sum, session) => sum + session.segment_seconds, 0);
     return `
       <section class="session-day-group">
@@ -876,7 +878,7 @@ function renderReports() {
         </div>
       </section>
     `;
-  }).join("");
+  }).join("") : '<p class="report-empty">Sessions will appear here when you track time.</p>';
   bindSessionEditTriggers(sessionList);
 }
 

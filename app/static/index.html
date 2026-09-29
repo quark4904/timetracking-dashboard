@@ -4,8 +4,11 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <title>Timetracking Dashboard</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;600;700;800&amp;display=swap" />
     <link rel="icon" href="/static/favicon.svg?v=20260708-1" type="image/svg+xml" />
-    <link rel="stylesheet" href="/static/styles.css?v=36f4adba6159" />
+    <link rel="stylesheet" href="/static/styles.css?v=55f942a4e3be" />
   </head>
   <body>
     <div class="app-shell">
@@ -80,6 +83,7 @@
                       <path d="M12 5v14" />
                       <path d="M5 12h14" />
                     </svg>
+                    <span class="icon-button-label">New task</span>
                   </button>
                   <button class="text-button" id="task-edit-toggle">Edit</button>
                 </div>
@@ -115,6 +119,7 @@
                   <path d="M12 5v14" />
                   <path d="M5 12h14" />
                 </svg>
+                <span class="icon-button-label">Add session</span>
               </button>
               <button class="icon-button" id="timeline-reports" aria-label="Open reports" title="Reports">
                 <svg class="button-icon" aria-hidden="true" viewBox="0 0 24 24">
@@ -137,7 +142,7 @@
               <div class="eyebrow" id="reports-eyebrow">Week overview</div>
               <h1 id="reports-title">Reports</h1>
             </div>
-            <div class="segmented" aria-label="Report range">
+            <div class="segmented" role="group" aria-label="Report range">
               <button data-report-range="day">Day</button>
               <button class="active" data-report-range="week">Week</button>
               <button data-report-range="month">Month</button>
@@ -147,16 +152,16 @@
 
           <div class="year-picker" id="report-period-picker">
             <button class="period-arrow period-prev" type="button" id="report-prev-period" aria-label="Previous period">‹</button>
-            <button class="period-today" type="button" id="report-current-reset" aria-label="Current period"></button>
+            <button class="period-today" type="button" id="report-current-reset" aria-label="Go to current period">Today</button>
             <button class="period-arrow period-next" type="button" id="report-next-period" aria-label="Next period">›</button>
             <button class="period-current" type="button" id="report-current-period" aria-label="Current period" title="Current period">2026</button>
           </div>
 
           <div class="report-grid">
-            <section class="panel">
+            <section class="panel report-activity" aria-label="Activity summary">
               <div class="metric-row">
                 <div>
-                  <span class="label">Time Tracked</span>
+                  <span class="label">Total time</span>
                   <strong id="total-time">0:00</strong>
                 </div>
                 <div>
@@ -164,11 +169,12 @@
                   <strong id="period-average">0:00</strong>
                 </div>
               </div>
+              <div class="panel-heading"><span>Activity</span></div>
               <div class="bar-chart" id="bar-chart"></div>
             </section>
-            <section class="panel">
+            <section class="panel report-breakdown">
               <div class="panel-heading">
-                <span>By Tasks And Folders</span>
+                <span>By task</span>
               </div>
               <div class="task-breakdown" id="task-breakdown"></div>
             </section>
@@ -352,6 +358,6 @@
 
     <div class="toast" id="toast" role="status" aria-live="polite" aria-atomic="true" hidden></div>
 
-    <script type="module" src="/static/app.js?v=ccd900e23d4b"></script>
+    <script type="module" src="/static/app.js?v=bbf1274ce91f"></script>
   </body>
 </html>
