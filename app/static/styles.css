@@ -4098,3 +4098,107 @@ dialog::backdrop {
     padding: 0;
   }
 }
+
+/* Separate task timer controls from task history selection. */
+.task-row:not(.editing) {
+  grid-template-columns: 44px minmax(0, 1fr) auto;
+  cursor: pointer;
+}
+
+.task-row.selected {
+  border-color: color-mix(in srgb, var(--task-color), var(--line) 35%);
+  background: color-mix(in srgb, var(--task-color), var(--surface-2) 12%);
+}
+
+.task-row .task-timer-toggle {
+  border: 0;
+  cursor: pointer;
+}
+
+.task-row .task-timer-toggle:disabled {
+  cursor: wait;
+  opacity: 0.6;
+}
+
+.task-row .task-run-icon.task-timer-toggle {
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+}
+
+.task-details-trigger {
+  min-width: 0;
+  min-height: 44px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.task-details-trigger .task-copy {
+  min-width: 0;
+}
+
+.task-row .task-action.task-timer-toggle {
+  min-height: 44px;
+  padding: 0 12px;
+}
+
+.entries-header > div {
+  min-width: 0;
+}
+
+.entries-header h2 {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.entries-header #show-all-activity {
+  flex: 0 0 auto;
+  min-height: 44px;
+  padding: 0 8px;
+  font-size: 13px;
+}
+
+.entries-header #show-all-activity[hidden] {
+  display: none;
+}
+
+@media (max-width: 820px) {
+  .task-row:not(.editing) {
+    grid-template-columns: 44px minmax(0, 1fr) auto;
+    grid-template-rows: auto;
+  }
+
+  .task-row:not(.editing) > .task-run-icon,
+  .task-row:not(.editing) > .task-action,
+  .task-row:not(.editing) > .task-details-trigger {
+    grid-row: 1;
+  }
+
+  .task-row:not(.editing) > .task-details-trigger {
+    grid-column: 2;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 3px;
+  }
+
+  .task-row:not(.editing) .task-time {
+    text-align: left;
+    font-size: 12px;
+  }
+
+  .task-row:not(.editing) > .task-action {
+    grid-column: 3;
+  }
+
+  .entries-panel {
+    scroll-margin-top: max(24px, env(safe-area-inset-top));
+  }
+}

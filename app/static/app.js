@@ -28,6 +28,8 @@ const state = {
   tasks: [],
   sessions: [],
   taskSessions: [],
+  selectedTaskId: null,
+  selectedTaskSessions: null,
   activeSession: null,
   reportSessions: [],
   admin: null,
@@ -186,6 +188,11 @@ async function loadData() {
   state.tasks = tasks;
   state.taskSessions = taskSessions;
   state.activeSession = active;
+  if (state.selectedTaskId !== null && !tasks.some((task) => task.id === state.selectedTaskId)) {
+    state.selectedTaskId = null;
+    state.selectedTaskSessions = null;
+    nextRequestVersion("task-history");
+  }
   render();
 }
 
@@ -255,8 +262,18 @@ async function reloadVisibleData() {
   syncTimelineDateWithToday();
   state.reportDataKey = null;
   await loadData();
+  if (state.selectedTaskId !== null) await loadSelectedTaskSessions();
   if (state.activeView === "reports") await loadReportData(true);
   if (state.activeView === "settings") await loadAdminData();
+}
+
+async function loadSelectedTaskSessions() {
+  const taskId = state.selectedTaskId;
+  if (taskId === null) return;
+  const sessions = await apiLatest("task-history", "/api/sessions");
+  if (sessions === null || state.selectedTaskId !== taskId) return;
+  state.selectedTaskSessions = sessions.filter((session) => session.task_id === taskId);
+  renderTaskEntries(document.getElementById("tasks-entry-list"));
 }
 
 function syncTimelineDateWithToday() {
@@ -441,7 +458,7 @@ function renderTasks() {
   document.getElementById("task-edit-toggle").textContent = state.isTaskEditing ? "Done" : "Edit";
   document.getElementById("tasks-help-text").textContent = state.isTaskEditing
     ? "Reorder tasks or open one to edit its details."
-    : "Tap a task to start or stop its timer.";
+    : "Tap a task for its time entries, or use Start to track time.";
   const rows = state.tasks.filter((task) => {
     if (state.filter === "archive") return task.archived;
     if (state.filter === "recent") return !task.archived && task.total_seconds > 0;
@@ -472,67 +489,115 @@ function renderTasks() {
 
   list.innerHTML = rows.map((task) => {
     const isRunning = active?.task_id === task.id;
+    const isSelected = state.selectedTaskId === task.id;
     const icon = isRunning ? "pause" : "play";
     const timeLabel = isRunning ? formatLiveDuration(secondsBetween(active.started_at, null)) : formatDuration(taskTotal(task));
     const startedLabel = isRunning ? `<span class="task-started">Started ${timeFmt.format(new Date(active.started_at))}</span>` : "";
     return `
-      <button class="task-row ${isRunning ? "running" : ""}" style="--task-color:${task.color}" data-task-id="${task.id}" aria-label="${isRunning ? "Stop" : "Start"} tracking ${escapeHtml(task.name)}">
-        <span class="task-run-icon">${icons[icon]}</span>
-        <span class="task-copy">
-          <span class="task-name">${escapeHtml(task.name)}</span>
-          ${startedLabel}
-        </span>
-        <span class="task-time">${timeLabel}</span>
-        <span class="task-action">${isRunning ? "Stop" : "Start"}</span>
-      </button>
+      <div class="task-row ${isRunning ? "running" : ""} ${isSelected ? "selected" : ""}" style="--task-color:${task.color}" data-task-id="${task.id}">
+        <button class="task-run-icon task-timer-toggle" type="button" aria-label="${isRunning ? "Stop" : "Start"} tracking ${escapeHtml(task.name)}">${icons[icon]}</button>
+        <button class="task-details-trigger" type="button" aria-label="Show time entries for ${escapeHtml(task.name)}" aria-controls="tasks-entry-list" aria-pressed="${isSelected}">
+          <span class="task-copy">
+            <span class="task-name">${escapeHtml(task.name)}</span>
+            ${startedLabel}
+          </span>
+          <span class="task-time">${timeLabel}</span>
+        </button>
+        <button class="task-action task-timer-toggle" type="button" aria-label="${isRunning ? "Stop" : "Start"} tracking ${escapeHtml(task.name)}">${isRunning ? "Stop" : "Start"}</button>
+      </div>
     `;
   }).join("") || `<div class="muted">No tasks here yet</div>`;
 
   list.querySelectorAll(".task-row").forEach((row) => {
-    row.addEventListener("click", async () => {
-      const taskId = Number(row.dataset.taskId);
-      await withActionLock(`task-session:${taskId}`, async () => {
-        row.disabled = true;
-        try {
-          if (active?.task_id === taskId) await stopActiveSession();
-          else {
-            await api(`/api/tasks/${taskId}/start`, { method: "POST" });
-            await reloadVisibleData();
+    const taskId = Number(row.dataset.taskId);
+    row.addEventListener("click", () => {
+      runSafely(() => showTaskEntries(taskId), "Could not load task time entries.");
+    });
+    row.querySelectorAll(".task-timer-toggle").forEach((button) => {
+      button.addEventListener("click", async (event) => {
+        event.stopPropagation();
+        await withActionLock(`task-session:${taskId}`, async () => {
+          const controls = [...row.querySelectorAll(".task-timer-toggle")];
+          controls.forEach((control) => { control.disabled = true; });
+          try {
+            if (active?.task_id === taskId) await stopActiveSession();
+            else {
+              await api(`/api/tasks/${taskId}/start`, { method: "POST" });
+              await reloadVisibleData();
+            }
+          } catch (error) {
+            reportError(error, "Could not change the session state.");
+          } finally {
+            controls.forEach((control) => { if (control.isConnected) control.disabled = false; });
           }
-        } catch (error) {
-          reportError(error, "Could not change the session state.");
-        } finally {
-          if (row.isConnected) row.disabled = false;
-        }
+        });
       });
     });
   });
+}
+
+async function showTaskEntries(taskId) {
+  if (state.selectedTaskId === taskId) {
+    clearTaskEntriesSelection();
+    return;
+  }
+  state.selectedTaskId = taskId;
+  state.selectedTaskSessions = null;
+  renderTasks();
+  if (window.matchMedia("(max-width: 820px)").matches) {
+    document.querySelector(".entries-panel").scrollIntoView({
+      behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth",
+      block: "start",
+    });
+  }
+  try {
+    await loadSelectedTaskSessions();
+  } catch (error) {
+    if (state.selectedTaskId === taskId) clearTaskEntriesSelection();
+    throw error;
+  }
+}
+
+function clearTaskEntriesSelection() {
+  state.selectedTaskId = null;
+  state.selectedTaskSessions = null;
+  nextRequestVersion("task-history");
+  renderTasks();
 }
 
 function renderTaskEntries(entryList) {
   const today = kstDateKey(new Date());
   const todayStart = kstDateBoundary(today);
   const tomorrowStart = kstDateBoundary(addDays(today, 1));
-  const recentSessions = state.taskSessions
-    .filter((session) => session.ended_at || kstDateKey(session.started_at) === today)
-    .sort((a, b) => new Date(b.started_at) - new Date(a.started_at))
-    .slice(0, 8);
   const todaySeconds = state.taskSessions
     .reduce((total, session) => total + overlapSeconds(session, todayStart, tomorrowStart), 0);
   document.getElementById("today-total").textContent = formatDuration(todaySeconds);
+  const task = state.tasks.find((item) => item.id === state.selectedTaskId);
+  document.getElementById("entries-title").textContent = task ? task.name : "Recent activity";
+  document.getElementById("entries-subtitle").textContent = task ? "All time entries for this task" : "Your latest sessions";
+  document.getElementById("show-all-activity").hidden = !task;
+  if (task && state.selectedTaskSessions === null) {
+    entryList.innerHTML = '<div class="entry-empty"><strong>Loading time entries…</strong></div>';
+    return;
+  }
+  const visibleSessions = task ? state.selectedTaskSessions : state.taskSessions
+    .filter((session) => session.ended_at || kstDateKey(session.started_at) === today);
+  const displayedSessions = [...visibleSessions]
+    .sort((a, b) => new Date(b.started_at) - new Date(a.started_at))
+    .slice(0, task ? undefined : 8);
 
-  if (!recentSessions.length) {
+  if (!displayedSessions.length) {
     entryList.innerHTML = `
       <div class="entry-empty">
-        <strong>No entries yet</strong>
-        <span>Start a task to fill today’s timeline.</span>
+        <strong>${task ? "No time entries for this task" : "No entries yet"}</strong>
+        <span>${task ? "Use Start to begin tracking it." : "Start a task to fill today’s timeline."}</span>
       </div>
     `;
     return;
   }
 
   let lastDate = "";
-  entryList.innerHTML = recentSessions.map((session) => {
+  entryList.innerHTML = displayedSessions.map((session) => {
     const sessionDate = kstDateKey(session.started_at);
     const date = dateFromKey(sessionDate);
     const heading = sessionDate === lastDate ? "" : `
@@ -974,6 +1039,7 @@ function selectedSession() {
   return [
     ...state.sessions,
     ...state.taskSessions,
+    ...(state.selectedTaskSessions || []),
     ...state.reportSessions,
   ].find((session) => session.id === state.editingSessionId);
 }
@@ -1108,6 +1174,7 @@ function openSessionEditor(sessionId) {
   const session = [
     ...state.sessions,
     ...state.taskSessions,
+    ...(state.selectedTaskSessions || []),
     ...state.reportSessions,
   ].find((item) => item.id === sessionId);
   if (!session) return;
@@ -1242,6 +1309,8 @@ document.querySelectorAll(".nav-item").forEach((button) => {
 document.getElementById("brand-home").addEventListener("click", () => {
   runSafely(() => showView("tasks"), "Could not load the view.");
 });
+
+document.getElementById("show-all-activity").addEventListener("click", clearTaskEntriesSelection);
 
 function activateTaskFilter(button) {
   state.filter = button.dataset.filter;

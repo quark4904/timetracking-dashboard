@@ -147,9 +147,28 @@ class BrowserChecks(unittest.TestCase):
             page.locator("#save-session").click()
         self.assertEqual(saved.value.status, 200)
         expect(page.locator("#session-dialog")).not_to_be_visible()
-        page.locator(".task-row").click()
+        page.locator(".task-row .task-run-icon").click()
         expect(page.locator("#active-session-control")).to_be_enabled()
         page.locator('[data-view="timeline"]').click()
         expect(page.locator("#active-session-control")).to_be_in_viewport()
         page.locator("#active-session-control").click()
         expect(page.locator("#active-session-control")).to_be_disabled()
+
+    def test_task_history_click_does_not_start_timer(self) -> None:
+        other = repository.create_task("Other", "#654321")
+        repository.create_session(other["id"], "2026-01-31T03:00:00+00:00",
+                                  "2026-01-31T03:30:00+00:00", "other task")
+        repository.create_session(self.task["id"], "2025-12-15T00:00:00+00:00",
+                                  "2025-12-15T00:20:00+00:00", "older session")
+        self.page.reload()
+        expect(self.page.locator(".task-row")).to_have_count(2)
+
+        self.page.locator(f'.task-row[data-task-id="{self.task["id"]}"] .task-details-trigger').click()
+        expect(self.page.locator("#entries-title")).to_have_text("Focus")
+        expect(self.page.locator("#tasks-entry-list .entry-row")).to_have_count(3)
+        expect(self.page.locator("#active-session-control")).to_be_disabled()
+
+        self.page.locator(f'.task-row[data-task-id="{self.task["id"]}"] .task-run-icon').click()
+        expect(self.page.locator("#active-session-control")).to_be_enabled()
+        self.page.locator("#show-all-activity").click()
+        expect(self.page.locator("#entries-title")).to_have_text("Recent activity")
