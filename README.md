@@ -1,6 +1,6 @@
 # Timetracking Dashboard
 
-FastAPI 기반의 개인 시간 추적 대시보드입니다. 모바일 참고 UI를 웹에 맞게 확장해 Tasks, Timeline, Reports, Settings 화면을 제공합니다.
+FastAPI 기반의 개인 시간 추적 대시보드입니다. Track에서 작업과 날짜별 Activity·Timeline을 함께 관리하고, Reports에서 시간을 분석합니다. 데스크탑은 작업 목록과 기록을 나란히 표시하며, 모바일은 Tasks·Activity·Timeline 보기 전환과 하단 탐색을 사용합니다.
 
 ## 로컬 실행
 
@@ -41,7 +41,7 @@ python -m playwright install chromium
 python -m unittest tests.browser_checks -v
 ```
 
-FastAPI 테스트는 `fastapi` 또는 `httpx`가 없으면 skip으로 표시됩니다. 브라우저 테스트는 별도로 실행하며 Chromium에서 시각 보존·월말 이동·지연 응답·새 세션 저장을, 모바일 뷰포트에서 편집·Tab 순서·Stop 동작을 확인합니다. 모든 API/브라우저 테스트는 임시 DB를 사용합니다. 모바일 테스트도 Chromium 엔진이므로 실제 iOS Safari 검증을 대체하지 않습니다.
+FastAPI 테스트는 `fastapi` 또는 `httpx`가 없으면 skip으로 표시됩니다. 브라우저 테스트는 별도로 실행하며 Chromium에서 데스크탑·모바일 레이아웃, 보기 전환, 날짜 공유·자정 집계, 월말 이동, 지연 응답, 새 세션 저장과 편집·Tab 순서·Stop 동작을 확인합니다. 모든 API/브라우저 테스트는 임시 DB를 사용합니다. 모바일 테스트도 Chromium 엔진이므로 실제 iOS Safari 검증을 대체하지 않습니다.
 
 ## 정적 파일 캐시
 

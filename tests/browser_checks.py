@@ -45,6 +45,9 @@ class BrowserChecks(unittest.TestCase):
         self.context = self.browser.new_context()
         self.addCleanup(self.context.close)
         self.page = self.context.new_page()
+        self.page_errors = []
+        self.page.on("pageerror", lambda error: self.page_errors.append(str(error)))
+        self.addCleanup(self.assertEqual, self.page_errors, [])
         self.page.clock.install(time=datetime.fromisoformat("2026-01-31T12:15:42+09:00"))
         self.page.goto(self.base_url)
         expect(self.page.locator(".task-row")).to_have_count(1)
@@ -71,7 +74,7 @@ class BrowserChecks(unittest.TestCase):
         expect(self.page.locator("#report-current-period")).to_have_attribute("aria-label", "January 2026")
 
     def test_today_defaults_can_be_saved(self) -> None:
-        self.page.locator('[data-view="timeline"]').click()
+        self.page.locator('[data-record-view="timeline"].record-tab').click()
         self.page.locator("#timeline-add-session").click()
         expect(self.page.locator("#session-start-hour")).to_have_value("11")
         expect(self.page.locator("#session-end-hour")).to_have_value("12")
@@ -80,7 +83,7 @@ class BrowserChecks(unittest.TestCase):
         self.assertEqual(saved.value.status, 201)
 
     def test_return_to_cached_month_ignores_delayed_response(self) -> None:
-        self.page.locator('[data-view="timeline"]').click()
+        self.page.locator('[data-record-view="timeline"].record-tab').click()
         expect(self.page.locator(".timeline-event")).to_have_count(2)
         pending = []
 
@@ -137,6 +140,7 @@ class BrowserChecks(unittest.TestCase):
         page = context.new_page()
         page.clock.install(time=datetime.fromisoformat("2026-01-31T12:15:42+09:00"))
         page.goto(self.base_url)
+        page.locator("#record-tab-list").click()
         page.locator(f'#tasks-entry-list [data-session-id="{self.session["id"]}"]').click()
         page.locator("#session-start-hour").focus()
         for field in ("session-start-minute", "session-end-hour", "session-end-minute"):
@@ -147,9 +151,10 @@ class BrowserChecks(unittest.TestCase):
             page.locator("#save-session").click()
         self.assertEqual(saved.value.status, 200)
         expect(page.locator("#session-dialog")).not_to_be_visible()
+        page.locator("#record-tab-tasks").click()
         page.locator(".task-row .task-run-icon").click()
         expect(page.locator("#active-session-control")).to_be_enabled()
-        page.locator('[data-view="timeline"]').click()
+        page.locator('[data-record-view="timeline"].record-tab').click()
         expect(page.locator("#active-session-control")).to_be_in_viewport()
         page.locator("#active-session-control").click()
         expect(page.locator("#active-session-control")).to_be_disabled()
@@ -171,4 +176,104 @@ class BrowserChecks(unittest.TestCase):
         self.page.locator(f'.task-row[data-task-id="{self.task["id"]}"] .task-run-icon').click()
         expect(self.page.locator("#active-session-control")).to_be_enabled()
         self.page.locator("#show-all-activity").click()
-        expect(self.page.locator("#entries-title")).to_have_text("Recent activity")
+        expect(self.page.locator("#entries-title")).to_have_text("Day activity")
+
+    def test_desktop_workspace_keeps_tasks_beside_both_record_views(self) -> None:
+        expect(self.page.locator(".nav-item")).to_have_count(2)
+        expect(self.page.locator("#record-tab-tasks")).not_to_be_visible()
+        rail = self.page.locator("#tasks-rail")
+        activity = self.page.locator("#activity-view")
+        expect(rail).to_be_visible()
+        expect(activity).to_be_visible()
+        self.assertLess(rail.bounding_box()["x"], activity.bounding_box()["x"])
+        self.page.locator("#record-tab-timeline").click()
+        expect(rail).to_be_visible()
+        expect(activity).not_to_be_visible()
+        expect(self.page.locator("#timeline-view")).to_be_visible()
+        self.page.locator(".task-details-trigger").click()
+        expect(activity).to_be_visible()
+        expect(self.page.locator("#entries-title")).to_have_text("Focus")
+        expect(self.page.locator("#active-session-control")).to_be_disabled()
+
+    def test_selected_day_is_shared_and_splits_midnight_entries(self) -> None:
+        repository.create_session(self.task["id"], "2026-01-30T23:30:00+09:00",
+                                  "2026-01-31T00:30:00+09:00", "across midnight")
+        self.page.reload()
+        expect(self.page.locator("#today-total")).to_have_text("1:30")
+        expect(self.page.locator("#tasks-entry-list .entry-row")).to_have_count(3)
+        self.page.locator("#track-prev-day").click()
+        expect(self.page.locator("#timeline-date-picker")).to_have_value("2026-01-30")
+        expect(self.page.locator("#today-total")).to_have_text("0:30")
+        expect(self.page.locator("#tasks-entry-list .entry-row")).to_have_count(1)
+        expect(self.page.locator(".entry-row > strong")).to_have_text("0:30")
+        self.page.locator("#record-tab-timeline").click()
+        expect(self.page.locator(".timeline-event")).to_have_count(1)
+        expect(self.page.locator(".timeline-event-duration")).to_have_text("0:30")
+        self.page.locator("#track-today").click()
+        expect(self.page.locator("#today-total")).to_have_text("1:30")
+        expect(self.page.locator(".timeline-event")).to_have_count(3)
+
+    def test_mobile_views_and_resize_keep_controls_accessible(self) -> None:
+        context = self.browser.new_context(viewport={"width": 390, "height": 844}, is_mobile=True, has_touch=True)
+        self.addCleanup(context.close)
+        page = context.new_page()
+        page.clock.install(time=datetime.fromisoformat("2026-01-31T12:15:42+09:00"))
+        page.goto(self.base_url)
+        expect(page.locator("#tasks-rail")).to_be_visible()
+        expect(page.locator("#activity-view")).not_to_be_visible()
+        page.locator(".task-details-trigger").click()
+        expect(page.locator("#activity-view")).to_be_visible()
+        expect(page.locator("#tasks-rail")).not_to_be_visible()
+        expect(page.locator("#record-tab-list")).to_have_attribute("aria-selected", "true")
+        expect(page.locator("#active-session-control")).to_be_disabled()
+        page.locator("#record-tab-tasks").click()
+        self.assertGreaterEqual(page.locator(".task-action").bounding_box()["height"], 44)
+        page.locator(".task-action").click()
+        expect(page.locator("#active-session-control")).to_be_in_viewport()
+        page.locator('[data-view="reports"]').click()
+        expect(page.locator("#active-session-control")).to_be_in_viewport()
+        page.locator("#active-session-control").click()
+        expect(page.locator("#active-session-control")).not_to_be_visible()
+        page.locator('[data-view="tasks"]').click()
+        for width in (320, 390, 768):
+            page.set_viewport_size({"width": width, "height": 844})
+            for tab in ("tasks", "list", "timeline"):
+                page.locator(f"#record-tab-{tab}").click()
+                self.assertTrue(page.evaluate("document.documentElement.scrollWidth <= window.innerWidth"), (width, tab))
+        page.locator("#record-tab-tasks").click()
+        page.set_viewport_size({"width": 1440, "height": 900})
+        expect(page.locator("#tasks-rail")).to_be_visible()
+        expect(page.locator("#activity-view")).to_be_visible()
+        expect(page.locator("#record-tab-tasks")).not_to_be_visible()
+
+    def test_report_layout_and_disclosure_at_desktop_and_mobile_widths(self) -> None:
+        self.page.locator('[data-view="reports"]').click()
+        expect(self.page.locator("#total-time")).to_have_text("1:00")
+        expect(self.page.locator("#session-list")).not_to_be_visible()
+        self.page.locator(".sessions-panel > summary").click()
+        expect(self.page.locator("#session-list .session-row")).to_have_count(2)
+        for width in (320, 390, 768, 1024, 1440):
+            self.page.set_viewport_size({"width": width, "height": 900})
+            for mode in ("day", "week", "month", "year"):
+                self.page.locator(f'[data-report-range="{mode}"]').click()
+                expect(self.page.locator(".bar-chart")).to_have_attribute("data-range", mode)
+                self.assertTrue(self.page.evaluate("document.documentElement.scrollWidth <= window.innerWidth"), (width, mode))
+                if mode == "week":
+                    expect(self.page.locator(".bar-weekday-short")).to_have_count(7)
+                    expect(self.page.locator(".bar-weekday-full").first).not_to_be_visible()
+                    self.assertTrue(self.page.locator(".bar-date").evaluate_all(
+                        "labels => labels.every(label => label.getBoundingClientRect().width <= "
+                        "label.closest('.report-bar-wrap').getBoundingClientRect().width)"
+                    ), width)
+        self.page.locator('[data-report-range="day"]').click()
+        self.page.locator(f'#session-list [data-session-id="{self.session["id"]}"]').click()
+        expect(self.page.locator("#session-dialog")).to_be_visible()
+
+    def test_record_tabs_support_keyboard_navigation(self) -> None:
+        self.page.locator("#record-tab-list").focus()
+        self.page.keyboard.press("ArrowRight")
+        expect(self.page.locator("#record-tab-timeline")).to_be_focused()
+        expect(self.page.locator("#timeline-view")).to_be_visible()
+        self.page.keyboard.press("Home")
+        expect(self.page.locator("#record-tab-list")).to_be_focused()
+        expect(self.page.locator("#activity-view")).to_be_visible()

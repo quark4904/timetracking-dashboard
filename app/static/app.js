@@ -27,18 +27,17 @@ import {
 const state = {
   tasks: [],
   sessions: [],
-  taskSessions: [],
   selectedTaskId: null,
   selectedTaskSessions: null,
   activeSession: null,
   reportSessions: [],
-  admin: null,
   sessionsMonth: null,
   reportMode: "week",
   reportDate: null,
   reportDataKey: null,
   filter: "active",
   activeView: "tasks",
+  recordView: "list",
   editingSessionId: null,
   editingSessionOriginal: null,
   isCreatingSession: false,
@@ -60,6 +59,7 @@ function resetInitialScroll() {
 resetInitialScroll();
 window.addEventListener("pageshow", resetInitialScroll, { once: true });
 
+const mobileLayout = window.matchMedia("(max-width: 820px)");
 const fmt = new Intl.DateTimeFormat("en", { month: "long", day: "numeric", year: "numeric" });
 state.reportDate = kstDateKey(new Date());
 state.timelineDate = state.reportDate;
@@ -177,16 +177,13 @@ function runSafely(action, fallback) {
 
 async function loadData() {
   const version = nextRequestVersion("dashboard-data");
-  const todayRange = monthRangeForDateKey(kstDateKey(new Date()));
-  const [tasks, , taskSessions, active] = await Promise.all([
+  const [tasks, , active] = await Promise.all([
     api("/api/tasks?include_archived=true"),
     fetchTimelineSessions(true),
-    api(sessionsPathForRange(todayRange.start, todayRange.end)),
     fetchActiveSession(),
   ]);
   if (requestVersions.get("dashboard-data") !== version) return;
   state.tasks = tasks;
-  state.taskSessions = taskSessions;
   state.activeSession = active;
   if (state.selectedTaskId !== null && !tasks.some((task) => task.id === state.selectedTaskId)) {
     state.selectedTaskId = null;
@@ -253,18 +250,12 @@ async function loadReportData(force = false) {
   renderReports();
 }
 
-async function loadAdminData() {
-  state.admin = await api("/api/admin/db");
-  renderAdmin();
-}
-
 async function reloadVisibleData() {
   syncTimelineDateWithToday();
   state.reportDataKey = null;
   await loadData();
   if (state.selectedTaskId !== null) await loadSelectedTaskSessions();
   if (state.activeView === "reports") await loadReportData(true);
-  if (state.activeView === "settings") await loadAdminData();
 }
 
 async function loadSelectedTaskSessions() {
@@ -332,21 +323,12 @@ function taskTotal(task) {
 }
 
 function render() {
-  syncActiveViewClass();
-  document.getElementById("today-label").textContent = fmt.format(dateFromKey(kstDateKey(new Date())));
-  document.getElementById("timeline-date").textContent = fmt.format(dateFromKey(state.timelineDate));
-  document.getElementById("timeline-date-picker").value = state.timelineDate;
+  renderTrackingDate();
   renderActiveSessionControl();
   renderTasks();
   renderWeekStrip();
   renderTimeline();
   renderReports();
-  renderAdmin();
-}
-
-function syncActiveViewClass() {
-  document.body.classList.toggle("timeline-active", state.activeView === "timeline");
-  document.body.classList.toggle("tasks-active", state.activeView === "tasks");
 }
 
 function updateLiveTimers() {
@@ -359,6 +341,7 @@ function updateLiveTimers() {
   const activeSessionTime = document.getElementById("active-session-time");
   if (activeSessionTime) activeSessionTime.textContent = liveLabel;
   document.getElementById("dashboard-active-time").textContent = liveLabel;
+  renderDaySummary();
 }
 
 function renderActiveSessionControl() {
@@ -367,10 +350,10 @@ function renderActiveSessionControl() {
   if (!control) return;
   const focus = document.getElementById("dashboard-focus");
   focus.classList.toggle("is-running", Boolean(active));
-  document.getElementById("dashboard-active-task").textContent = active?.task_name || "No timer running";
+  document.getElementById("dashboard-active-task").textContent = active?.task_name || "Ready when you are.";
   document.getElementById("dashboard-active-time").textContent = active
     ? formatLiveDuration(secondsBetween(active.started_at, null))
-    : "Choose a task below to start";
+    : "Pick a task and press Start.";
   if (active) focus.style.setProperty("--task-color", active.task_color || taskColorForSession(active));
   else focus.style.removeProperty("--task-color");
   document.body.classList.toggle("has-active-session", Boolean(active));
@@ -464,6 +447,7 @@ function renderTasks() {
     if (state.filter === "recent") return !task.archived && task.total_seconds > 0;
     return !task.archived;
   });
+  renderDaySummary();
   renderTaskEntries(entryList);
 
   if (state.isTaskEditing) {
@@ -492,7 +476,7 @@ function renderTasks() {
     const isSelected = state.selectedTaskId === task.id;
     const icon = isRunning ? "pause" : "play";
     const timeLabel = isRunning ? formatLiveDuration(secondsBetween(active.started_at, null)) : formatDuration(taskTotal(task));
-    const startedLabel = isRunning ? `<span class="task-started">Started ${timeFmt.format(new Date(active.started_at))}</span>` : "";
+    const startedLabel = `<span class="task-started">${isRunning ? `Started ${timeFmt.format(new Date(active.started_at))}` : "Total tracked"}</span>`;
     return `
       <div class="task-row ${isRunning ? "running" : ""} ${isSelected ? "selected" : ""}" style="--task-color:${task.color}" data-task-id="${task.id}">
         <button class="task-run-icon task-timer-toggle" type="button" aria-label="${isRunning ? "Stop" : "Start"} tracking ${escapeHtml(task.name)}">${icons[icon]}</button>
@@ -544,12 +528,8 @@ async function showTaskEntries(taskId) {
   state.selectedTaskId = taskId;
   state.selectedTaskSessions = null;
   renderTasks();
-  if (window.matchMedia("(max-width: 820px)").matches) {
-    document.querySelector(".entries-panel").scrollIntoView({
-      behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth",
-      block: "start",
-    });
-  }
+  setRecordView("list");
+  if (mobileLayout.matches) document.getElementById("entries-title").focus({ preventScroll: true });
   try {
     await loadSelectedTaskSessions();
   } catch (error) {
@@ -565,26 +545,36 @@ function clearTaskEntriesSelection() {
   renderTasks();
 }
 
+function selectedDaySessions() {
+  const start = kstDateBoundary(state.timelineDate);
+  const end = kstDateBoundary(addDays(state.timelineDate, 1));
+  return state.sessions.filter((session) => overlapSeconds(session, start, end) > 0);
+}
+
+function renderDaySummary() {
+  const start = kstDateBoundary(state.timelineDate);
+  const end = kstDateBoundary(addDays(state.timelineDate, 1));
+  const sessions = selectedDaySessions();
+  const seconds = sessions.reduce((total, session) => total + overlapSeconds(session, start, end), 0);
+  document.getElementById("today-total").textContent = formatDuration(seconds);
+  document.getElementById("tracked-day-label").textContent = state.timelineDate === kstDateKey(new Date())
+    ? "Tracked today" : "Tracked this day";
+  document.getElementById("day-session-count").textContent = sessions.length
+    ? `${sessions.length} ${sessions.length === 1 ? "entry" : "entries"}` : "No entries yet";
+}
+
 function renderTaskEntries(entryList) {
-  const today = kstDateKey(new Date());
-  const todayStart = kstDateBoundary(today);
-  const tomorrowStart = kstDateBoundary(addDays(today, 1));
-  const todaySeconds = state.taskSessions
-    .reduce((total, session) => total + overlapSeconds(session, todayStart, tomorrowStart), 0);
-  document.getElementById("today-total").textContent = formatDuration(todaySeconds);
   const task = state.tasks.find((item) => item.id === state.selectedTaskId);
-  document.getElementById("entries-title").textContent = task ? task.name : "Recent activity";
-  document.getElementById("entries-subtitle").textContent = task ? "All time entries for this task" : "Your latest sessions";
+  document.getElementById("entries-title").textContent = task ? task.name : "Day activity";
+  document.getElementById("entries-subtitle").textContent = task ? "All time entries for this task" : "Every entry for the selected day";
   document.getElementById("show-all-activity").hidden = !task;
   if (task && state.selectedTaskSessions === null) {
     entryList.innerHTML = '<div class="entry-empty"><strong>Loading time entries…</strong></div>';
     return;
   }
-  const visibleSessions = task ? state.selectedTaskSessions : state.taskSessions
-    .filter((session) => session.ended_at || kstDateKey(session.started_at) === today);
+  const visibleSessions = task ? state.selectedTaskSessions : selectedDaySessions();
   const displayedSessions = [...visibleSessions]
-    .sort((a, b) => new Date(b.started_at) - new Date(a.started_at))
-    .slice(0, task ? undefined : 8);
+    .sort((a, b) => new Date(b.started_at) - new Date(a.started_at));
 
   if (!displayedSessions.length) {
     entryList.innerHTML = `
@@ -598,7 +588,13 @@ function renderTaskEntries(entryList) {
 
   let lastDate = "";
   entryList.innerHTML = displayedSessions.map((session) => {
-    const sessionDate = kstDateKey(session.started_at);
+    const start = task ? new Date(session.started_at) : new Date(Math.max(
+      new Date(session.started_at), kstDateBoundary(state.timelineDate),
+    ));
+    const end = task ? new Date(session.ended_at || Date.now()) : new Date(Math.min(
+      new Date(session.ended_at || Date.now()), kstDateBoundary(addDays(state.timelineDate, 1)),
+    ));
+    const sessionDate = task ? kstDateKey(session.started_at) : state.timelineDate;
     const date = dateFromKey(sessionDate);
     const heading = sessionDate === lastDate ? "" : `
       <div class="entry-day">
@@ -611,13 +607,13 @@ function renderTaskEntries(entryList) {
       ${heading}
       <button class="entry-row session-edit-trigger" data-session-id="${session.id}" style="--task-color:${session.task_color}">
         <span class="entry-times">
-          <span>${timeFmt.format(new Date(session.started_at))}</span>
-          <span>${session.ended_at ? timeFmt.format(new Date(session.ended_at)) : "Running"}</span>
+          <span>${timeFmt.format(start)}</span>
+          <span>${!session.ended_at && (task || state.timelineDate === kstDateKey(new Date())) ? "Running" : timeFmt.format(end)}</span>
         </span>
         <span class="entry-marker"></span>
         <span class="entry-title">${escapeHtml(session.task_name)}</span>
         <span class="entry-note">${escapeHtml(session.notes || "")}</span>
-        <strong>${formatDuration(secondsBetween(session.started_at, session.ended_at))}</strong>
+        <strong>${formatDuration((end - start) / 1000)}</strong>
       </button>
     `;
   }).join("");
@@ -762,17 +758,19 @@ function renderWeekStrip() {
   }).join("");
   document.querySelectorAll(".day-pill").forEach((button) => {
     button.addEventListener("click", () => {
-      setTimelineDate(button.dataset.date);
+      runSafely(() => setTimelineDate(button.dataset.date), "Could not load the selected day.");
     });
   });
 }
 
 async function setTimelineDate(value) {
+  state.selectedTaskId = null;
+  state.selectedTaskSessions = null;
+  nextRequestVersion("task-history");
   state.timelineDate = value;
   state.timelineFollowsToday = value === kstDateKey(new Date());
   state.timelineShouldCenterNow = state.timelineFollowsToday;
-  document.getElementById("timeline-date").textContent = fmt.format(dateFromKey(state.timelineDate));
-  document.getElementById("timeline-date-picker").value = state.timelineDate;
+  renderTrackingDate();
   renderWeekStrip();
   await loadTimelineSessions();
   renderTimeline();
@@ -972,33 +970,6 @@ function renderReports() {
   bindSessionEditTriggers(sessionList);
 }
 
-function renderAdmin() {
-  if (!state.admin) return;
-  document.getElementById("admin-summary").innerHTML = `
-    <div class="setting-row">
-      <div>
-        <strong>Storage timezone</strong>
-        <span>Database values are stored in UTC for stable server-side records.</span>
-      </div>
-      <code>${escapeHtml(state.admin.storage_timezone)}</code>
-    </div>
-    <div class="setting-row">
-      <div>
-        <strong>Display timezone</strong>
-        <span>Database display columns convert timestamps for Korea.</span>
-      </div>
-      <code>${escapeHtml(state.admin.display_timezone)}</code>
-    </div>
-    <div class="setting-row">
-      <div>
-        <strong>Database file</strong>
-        <span>Local SQLite path used by this server.</span>
-      </div>
-      <code>${escapeHtml(state.admin.db_path)}</code>
-    </div>
-  `;
-}
-
 function moveChartTooltip(event) {
   const tooltip = document.getElementById("chart-tooltip");
   const offset = 14;
@@ -1038,7 +1009,6 @@ function selectedSession() {
   if (state.isCreatingSession) return null;
   return [
     ...state.sessions,
-    ...state.taskSessions,
     ...(state.selectedTaskSessions || []),
     ...state.reportSessions,
   ].find((session) => session.id === state.editingSessionId);
@@ -1173,7 +1143,6 @@ function openSessionCreator() {
 function openSessionEditor(sessionId) {
   const session = [
     ...state.sessions,
-    ...state.taskSessions,
     ...(state.selectedTaskSessions || []),
     ...state.reportSessions,
   ].find((item) => item.id === sessionId);
@@ -1285,9 +1254,39 @@ function escapeHtml(value) {
   })[char]);
 }
 
+function renderTrackingDate() {
+  const date = dateFromKey(state.timelineDate);
+  document.getElementById("today-label").textContent = date.toLocaleDateString("en", {
+    weekday: "long", month: "long", day: "numeric",
+  });
+  const dateButton = document.getElementById("timeline-date");
+  dateButton.textContent = date.toLocaleDateString("en", { month: "short", day: "numeric", year: "numeric" });
+  dateButton.setAttribute("aria-label", `Choose tracking date, ${fmt.format(date)}`);
+  document.getElementById("timeline-date-picker").value = state.timelineDate;
+  document.getElementById("track-today").disabled = state.timelineDate === kstDateKey(new Date());
+}
+
+function setRecordView(viewName) {
+  state.recordView = viewName === "tasks" && !mobileLayout.matches ? "list" : viewName;
+  document.getElementById("tasks-view").dataset.recordView = state.recordView;
+  const rail = document.getElementById("tasks-rail");
+  rail.hidden = mobileLayout.matches && state.recordView !== "tasks";
+  rail.setAttribute("role", mobileLayout.matches ? "tabpanel" : "region");
+  if (mobileLayout.matches) rail.setAttribute("aria-labelledby", "record-tab-tasks");
+  else rail.removeAttribute("aria-labelledby");
+  document.getElementById("activity-view").hidden = state.recordView !== "list";
+  document.getElementById("timeline-view").hidden = state.recordView !== "timeline";
+  document.querySelectorAll(".record-tab").forEach((button) => {
+    const selected = button.dataset.recordView === state.recordView;
+    button.classList.toggle("active", selected);
+    button.setAttribute("aria-selected", String(selected));
+    button.tabIndex = selected ? 0 : -1;
+  });
+  if (state.recordView === "timeline") requestAnimationFrame(renderTimeline);
+}
+
 async function showView(viewName) {
   state.activeView = viewName;
-  syncActiveViewClass();
   document.querySelectorAll(".nav-item").forEach((item) => {
     const active = item.dataset.view === viewName;
     item.classList.toggle("active", active);
@@ -1295,10 +1294,34 @@ async function showView(viewName) {
     else item.removeAttribute("aria-current");
   });
   document.querySelectorAll(".view").forEach((view) => view.classList.toggle("active", view.id === `${viewName}-view`));
-  if (viewName === "timeline" && state.timelineShouldCenterNow) requestAnimationFrame(renderTimeline);
+  hideChartTooltip();
+  if (viewName === "tasks") setRecordView(state.recordView);
   if (viewName === "reports") await loadReportData();
-  if (viewName === "settings") await loadAdminData();
 }
+
+mobileLayout.addEventListener("change", () => setRecordView(state.recordView));
+document.querySelectorAll(".record-tab").forEach((button) => {
+  button.addEventListener("click", () => setRecordView(button.dataset.recordView));
+  button.addEventListener("keydown", (event) => {
+    if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+    event.preventDefault();
+    const buttons = [...document.querySelectorAll(".record-tab")].filter((item) => item.getClientRects().length);
+    const index = buttons.indexOf(button);
+    const nextIndex = event.key === "Home" ? 0 : event.key === "End" ? buttons.length - 1
+      : (index + (event.key === "ArrowRight" ? 1 : -1) + buttons.length) % buttons.length;
+    buttons[nextIndex].focus();
+    setRecordView(buttons[nextIndex].dataset.recordView);
+  });
+});
+document.getElementById("track-prev-day").addEventListener("click", () => {
+  runSafely(() => setTimelineDate(addDays(state.timelineDate, -1)), "Could not load the selected day.");
+});
+document.getElementById("track-next-day").addEventListener("click", () => {
+  runSafely(() => setTimelineDate(addDays(state.timelineDate, 1)), "Could not load the selected day.");
+});
+document.getElementById("track-today").addEventListener("click", () => {
+  runSafely(() => setTimelineDate(kstDateKey(new Date())), "Could not load today.");
+});
 
 document.querySelectorAll(".nav-item").forEach((button) => {
   button.addEventListener("click", () => {
@@ -1373,9 +1396,6 @@ document.getElementById("task-form").addEventListener("submit", async (event) =>
   });
 });
 
-document.getElementById("timeline-reports").addEventListener("click", () => {
-  runSafely(() => showView("reports"), "Could not load reports.");
-});
 document.getElementById("timeline-add-session").addEventListener("click", openSessionCreator);
 document.getElementById("bar-chart").addEventListener("pointermove", (event) => {
   const segment = event.target.closest(".bar-segment");
@@ -1422,13 +1442,14 @@ document.getElementById("report-current-period").addEventListener("click", async
   state.reportDataKey = null;
   await runSafely(() => loadReportData(true), "Could not load reports.");
 });
-document.getElementById("refresh-admin").addEventListener("click", () => {
-  runSafely(loadAdminData, "Could not load settings.");
-});
 document.getElementById("timeline-date").addEventListener("click", () => {
   const picker = document.getElementById("timeline-date-picker");
   if (typeof picker.showPicker === "function") picker.showPicker();
-  else picker.focus();
+  else {
+    picker.tabIndex = 0;
+    picker.focus();
+    picker.click();
+  }
 });
 document.getElementById("timeline-date-picker").addEventListener("change", (event) => {
   if (event.target.value) runSafely(() => setTimelineDate(event.target.value), "Could not load the timeline.");
@@ -1601,6 +1622,7 @@ document.getElementById("delete-session").addEventListener("click", async () => 
 
 document.getElementById("active-session-control").addEventListener("click", stopActiveSession);
 
+setRecordView(mobileLayout.matches ? "tasks" : "list");
 loadData().catch((error) => reportError(error, "Could not load the dashboard data."));
 setInterval(updateLiveTimers, 1000);
 startAutoRefresh();
