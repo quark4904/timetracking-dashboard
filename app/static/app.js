@@ -341,12 +341,21 @@ function updateLiveTimers() {
   if (time) time.textContent = liveLabel;
   const activeSessionTime = document.getElementById("active-session-time");
   if (activeSessionTime) activeSessionTime.textContent = liveLabel;
+  document.getElementById("dashboard-active-time").textContent = liveLabel;
 }
 
 function renderActiveSessionControl() {
   const control = document.getElementById("active-session-control");
   const active = activeSession();
   if (!control) return;
+  const focus = document.getElementById("dashboard-focus");
+  focus.classList.toggle("is-running", Boolean(active));
+  document.getElementById("dashboard-active-task").textContent = active?.task_name || "No timer running";
+  document.getElementById("dashboard-active-time").textContent = active
+    ? formatLiveDuration(secondsBetween(active.started_at, null))
+    : "Choose a task below to start";
+  if (active) focus.style.setProperty("--task-color", active.task_color || taskColorForSession(active));
+  else focus.style.removeProperty("--task-color");
   document.body.classList.toggle("has-active-session", Boolean(active));
   control.classList.toggle("idle", !active);
   control.disabled = !active;
@@ -396,10 +405,10 @@ function reportEyebrowText(mode) {
 
 function averageLabelText(mode) {
   return {
-    day: "Hourly Avg.",
-    week: "Daily Avg.",
-    month: "Daily Avg.",
-    year: "Monthly Avg.",
+    day: "Per active hour",
+    week: "Per active day",
+    month: "Per active day",
+    year: "Per active month",
   }[mode];
 }
 
@@ -430,6 +439,9 @@ function renderTasks() {
   const tasksView = document.getElementById("tasks-view");
   tasksView.classList.toggle("tasks-editing", state.isTaskEditing);
   document.getElementById("task-edit-toggle").textContent = state.isTaskEditing ? "Done" : "Edit";
+  document.getElementById("tasks-help-text").textContent = state.isTaskEditing
+    ? "Reorder tasks or open one to edit its details."
+    : "Tap a task to start or stop its timer.";
   const rows = state.tasks.filter((task) => {
     if (state.filter === "archive") return task.archived;
     if (state.filter === "recent") return !task.archived && task.total_seconds > 0;
@@ -464,13 +476,14 @@ function renderTasks() {
     const timeLabel = isRunning ? formatLiveDuration(secondsBetween(active.started_at, null)) : formatDuration(taskTotal(task));
     const startedLabel = isRunning ? `<span class="task-started">Started ${timeFmt.format(new Date(active.started_at))}</span>` : "";
     return `
-      <button class="task-row ${isRunning ? "running" : ""}" style="--task-color:${task.color}" data-task-id="${task.id}">
+      <button class="task-row ${isRunning ? "running" : ""}" style="--task-color:${task.color}" data-task-id="${task.id}" aria-label="${isRunning ? "Stop" : "Start"} tracking ${escapeHtml(task.name)}">
         <span class="task-run-icon">${icons[icon]}</span>
         <span class="task-copy">
           <span class="task-name">${escapeHtml(task.name)}</span>
           ${startedLabel}
         </span>
         <span class="task-time">${timeLabel}</span>
+        <span class="task-action">${isRunning ? "Stop" : "Start"}</span>
       </button>
     `;
   }).join("") || `<div class="muted">No tasks here yet</div>`;
@@ -775,9 +788,17 @@ function renderReports() {
     });
   });
   const total = buckets.reduce((sum, bucket) => sum + bucket.total, 0);
+  const activeBucketCount = buckets.filter((bucket) => bucket.total > 0).length;
   document.getElementById("total-time").textContent = formatDuration(total);
   document.getElementById("average-label").textContent = averageLabelText(state.reportMode);
-  document.getElementById("period-average").textContent = formatDuration(total / Math.max(1, buckets.filter((bucket) => bucket.total > 0).length));
+  document.getElementById("period-average").textContent = formatDuration(total / Math.max(1, activeBucketCount));
+  document.getElementById("report-active-label").textContent = {
+    day: "Active hours",
+    week: "Active days",
+    month: "Active days",
+    year: "Active months",
+  }[state.reportMode];
+  document.getElementById("report-active-buckets").textContent = String(activeBucketCount);
   document.getElementById("reports-eyebrow").textContent = reportEyebrowText(state.reportMode);
   const previousPeriodLabel = reportPeriodLabel(
     state.reportMode,
@@ -833,6 +854,9 @@ function renderReports() {
     .filter((task) => totalByTask.has(task.id))
     .map((task) => ({ ...task, seconds: totalByTask.get(task.id) }))
     .sort((a, b) => b.seconds - a.seconds);
+  document.getElementById("report-top-task").textContent = breakdown.length
+    ? `Most time on ${breakdown[0].name}`
+    : "No activity in this period yet";
   document.getElementById("task-breakdown").innerHTML = breakdown.length ? breakdown.map((task) => {
     const pct = total ? Math.round((task.seconds / total) * 100) : 0;
     return `
@@ -851,6 +875,7 @@ function renderReports() {
   }).join("") : '<p class="report-empty">No tracked time in this period yet.</p>';
 
   const sessionSegments = reportSessionSegments(reportSessions, range);
+  document.getElementById("report-session-count").textContent = `${reportSessions.length} ${reportSessions.length === 1 ? "session" : "sessions"}`;
   const sessionList = document.getElementById("session-list");
   sessionList.innerHTML = sessionSegments.length ? Array.from(groupedSessionsByDate(sessionSegments).entries()).map(([date, sessions]) => {
     const dayTotal = sessions.reduce((sum, session) => sum + session.segment_seconds, 0);
@@ -1196,7 +1221,12 @@ function escapeHtml(value) {
 async function showView(viewName) {
   state.activeView = viewName;
   syncActiveViewClass();
-  document.querySelectorAll(".nav-item").forEach((item) => item.classList.toggle("active", item.dataset.view === viewName));
+  document.querySelectorAll(".nav-item").forEach((item) => {
+    const active = item.dataset.view === viewName;
+    item.classList.toggle("active", active);
+    if (active) item.setAttribute("aria-current", "page");
+    else item.removeAttribute("aria-current");
+  });
   document.querySelectorAll(".view").forEach((view) => view.classList.toggle("active", view.id === `${viewName}-view`));
   if (viewName === "timeline" && state.timelineShouldCenterNow) requestAnimationFrame(renderTimeline);
   if (viewName === "reports") await loadReportData();

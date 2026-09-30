@@ -8,17 +8,17 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;600;700;800&amp;display=swap" />
     <link rel="icon" href="/static/favicon.svg?v=20260708-1" type="image/svg+xml" />
-    <link rel="stylesheet" href="/static/styles.css?v=55f942a4e3be" />
+    <link rel="stylesheet" href="/static/styles.css?v=5ecd96b9b55a" />
   </head>
   <body>
     <div class="app-shell">
-      <aside class="sidebar">
+      <header class="sidebar app-header">
         <button class="brand" id="brand-home" type="button" aria-label="Go to home">
           <span class="brand-mark"></span>
           <span>TimeTracking</span>
         </button>
         <nav class="nav" aria-label="Main">
-          <button class="nav-item active" data-view="tasks" aria-label="Tasks">
+          <button class="nav-item active" data-view="tasks" aria-label="Tasks" aria-current="page">
             <svg class="icon" aria-hidden="true" viewBox="0 0 24 24">
               <path d="M8 6h13" />
               <path d="M8 12h13" />
@@ -65,17 +65,35 @@
             <span id="active-session-time">0:00:00</span>
           </span>
         </button>
-      </aside>
+      </header>
 
       <main class="content">
         <section class="view active" id="tasks-view" aria-labelledby="tasks-title">
+          <header class="dashboard-heading">
+            <div>
+              <span class="eyebrow" id="today-label"></span>
+              <h1 id="tasks-title">Today</h1>
+              <p>Start a task to track time as you work.</p>
+            </div>
+          </header>
+          <div class="dashboard-overview" aria-label="Today's summary">
+            <section class="overview-total">
+              <span class="overview-label">Tracked today</span>
+              <strong id="today-total">0:00</strong>
+              <span class="overview-hint">Your time at a glance</span>
+            </section>
+            <section class="overview-focus" id="dashboard-focus">
+              <span class="overview-label">Current focus</span>
+              <strong id="dashboard-active-task">No timer running</strong>
+              <span id="dashboard-active-time">Choose a task below to start</span>
+            </section>
+          </div>
           <div class="tasks-layout">
             <section class="tasks-rail" aria-label="Task list">
-              <div class="rail-toolbar">
-                <div class="task-tabs" role="tablist" aria-label="Task filters">
-                  <button class="task-tab active" id="task-tab-active" data-filter="active" role="tab" aria-selected="true" aria-controls="task-panel-content" tabindex="0">All Tasks</button>
-                  <button class="task-tab" id="task-tab-recent" data-filter="recent" role="tab" aria-selected="false" aria-controls="task-panel-content" tabindex="-1">Recent</button>
-                  <button class="task-tab" id="task-tab-archive" data-filter="archive" role="tab" aria-selected="false" aria-controls="task-panel-content" tabindex="-1">Archive</button>
+              <div class="section-heading">
+                <div>
+                  <h2>Tasks</h2>
+                  <p id="tasks-help-text">Tap a task to start or stop its timer.</p>
                 </div>
                 <div class="top-actions">
                   <button class="icon-button" id="add-task" aria-label="Add task" title="Add task">
@@ -88,18 +106,24 @@
                   <button class="text-button" id="task-edit-toggle">Edit</button>
                 </div>
               </div>
+              <div class="rail-toolbar">
+                <div class="task-tabs" role="tablist" aria-label="Task filters">
+                  <button class="task-tab active" id="task-tab-active" data-filter="active" role="tab" aria-selected="true" aria-controls="task-panel-content" tabindex="0">All Tasks</button>
+                  <button class="task-tab" id="task-tab-recent" data-filter="recent" role="tab" aria-selected="false" aria-controls="task-panel-content" tabindex="-1">Recent</button>
+                  <button class="task-tab" id="task-tab-archive" data-filter="archive" role="tab" aria-selected="false" aria-controls="task-panel-content" tabindex="-1">Archive</button>
+                </div>
+              </div>
               <section class="panel task-panel" id="task-panel-content" role="tabpanel" aria-labelledby="task-tab-active" tabindex="0">
                 <div class="task-list" id="task-list"></div>
               </section>
             </section>
 
-            <section class="entries-panel" aria-labelledby="tasks-title">
+            <section class="entries-panel" aria-labelledby="entries-title">
               <header class="entries-header">
                 <div>
-                  <h1 id="tasks-title">Time Entries</h1>
-                  <span id="today-label"></span>
+                  <h2 id="entries-title">Recent activity</h2>
+                  <span>Your latest sessions</span>
                 </div>
-                <strong id="today-total">0:00</strong>
               </header>
               <div class="entries-list" id="tasks-entry-list"></div>
             </section>
@@ -112,6 +136,7 @@
               <button class="eyebrow date-button" id="timeline-date" type="button"></button>
               <input class="date-picker" id="timeline-date-picker" type="date" aria-label="Select timeline date" />
               <h1 id="timeline-title">Timeline</h1>
+              <p class="topbar-subtitle">See the shape of your day and adjust sessions.</p>
             </div>
             <div class="topbar-actions">
               <button class="icon-button" id="timeline-add-session" aria-label="Add session" title="Add session">
@@ -157,24 +182,31 @@
             <button class="period-current" type="button" id="report-current-period" aria-label="Current period" title="Current period">2026</button>
           </div>
 
+          <section class="report-summary" aria-label="Report summary">
+            <div class="report-summary-primary">
+              <span class="overview-label">Total tracked</span>
+              <strong id="total-time">0:00</strong>
+              <span id="report-top-task">No activity yet</span>
+            </div>
+            <div class="report-summary-secondary">
+              <div>
+                <span class="overview-label" id="average-label">Per active day</span>
+                <strong id="period-average">0:00</strong>
+              </div>
+              <div>
+                <span class="overview-label" id="report-active-label">Active days</span>
+                <strong id="report-active-buckets">0</strong>
+              </div>
+            </div>
+          </section>
           <div class="report-grid">
             <section class="panel report-activity" aria-label="Activity summary">
-              <div class="metric-row">
-                <div>
-                  <span class="label">Total time</span>
-                  <strong id="total-time">0:00</strong>
-                </div>
-                <div>
-                  <span class="label" id="average-label">Daily Avg.</span>
-                  <strong id="period-average">0:00</strong>
-                </div>
-              </div>
-              <div class="panel-heading"><span>Activity</span></div>
+              <div class="panel-heading"><span>Time over the period</span></div>
               <div class="bar-chart" id="bar-chart"></div>
             </section>
             <section class="panel report-breakdown">
               <div class="panel-heading">
-                <span>By task</span>
+                <span>Where time went</span>
               </div>
               <div class="task-breakdown" id="task-breakdown"></div>
             </section>
@@ -182,7 +214,8 @@
 
           <section class="panel sessions-panel">
             <div class="panel-heading">
-              <span>Sessions</span>
+              <span>Session history</span>
+              <span id="report-session-count">0 sessions</span>
             </div>
             <div id="session-list"></div>
           </section>
@@ -193,6 +226,7 @@
             <div>
               <div class="eyebrow">System</div>
               <h1 id="settings-title">Settings</h1>
+              <p class="topbar-subtitle">Connection and storage details.</p>
             </div>
             <button class="icon-button" id="refresh-admin" aria-label="Refresh settings data" title="Refresh">
               <svg class="button-icon" aria-hidden="true" viewBox="0 0 24 24">
@@ -358,6 +392,6 @@
 
     <div class="toast" id="toast" role="status" aria-live="polite" aria-atomic="true" hidden></div>
 
-    <script type="module" src="/static/app.js?v=bbf1274ce91f"></script>
+    <script type="module" src="/static/app.js?v=d983bb3659b3"></script>
   </body>
 </html>
