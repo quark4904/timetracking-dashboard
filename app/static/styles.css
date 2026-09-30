@@ -1879,9 +1879,236 @@ dialog::backdrop {
   border-color: #46543a;
 }
 
-@media (min-width: 1200px) {
+/* Desktop typography and fluid panels leave mobile sizing unchanged. */
+@media (min-width: 821px) {
+  :root {
+    --sidebar-width: clamp(216px, 14vw, 264px);
+  }
+
+  body {
+    font-size: 16px;
+  }
+
+  .view.active {
+    max-width: none;
+    padding: 36px clamp(24px, 2.5vw, 48px) 48px;
+  }
+
+  .brand {
+    font-size: 18px;
+  }
+
+  h2, .record-heading, .period-current {
+    font-size: 20px;
+  }
+
+  .nav-item, .task-name, .entry-title, .entry-row > strong,
+  .session-title, .session-row > strong, .breakdown-row .task-name,
+  .breakdown-row .task-time, .panel-heading,
+  .session-task-button, .session-task-option {
+    font-size: 16px;
+  }
+
+  .icon-button, .text-button, .primary-button, .danger-button, .date-button,
+  .dashboard-heading p, .topbar-subtitle, .eyebrow, .overview-label,
+  .overview-hint, .focus-copy > span:last-child, .task-tab, .task-time,
+  .task-action, .record-tab, .record-toolbar .icon-button,
+  .section-heading .text-button, .entries-header span,
+  .entries-header .text-button, .entry-day, .entry-times, .entry-note,
+  .segmented button, .period-today, #report-top-task,
+  #report-session-count, .session-day-heading, .session-times, .session-notes,
+  .chart-tooltip, .dialog-form label, .session-time-card label > span:first-child,
+  .session-time-card > .session-date-input, .session-duration-row,
+  .session-field-row > span, .session-notes-field,
+  .delete-session-button, .task-danger-card button, .confirm-form p {
+    font-size: 14px;
+  }
+
+  .brand-caption, .workspace-caption, .section-heading p, .task-started,
+  .progress-line > span, .color-label, .active-session-stop {
+    font-size: 13px;
+  }
+
+  .active-session-copy strong, .active-session-copy span {
+    font-size: 14px;
+  }
+
+  .nav-item {
+    min-height: 50px;
+  }
+
+  .dashboard-overview {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 24px;
+    padding-bottom: 24px;
+    margin-bottom: 24px;
+  }
+
+  .overview-total > strong {
+    font-size: clamp(56px, 4vw, 72px);
+  }
+
+  .focus-copy strong {
+    font-size: 22px;
+  }
+
+  .tasks-layout {
+    grid-template-columns: clamp(300px, 27vw, 440px) minmax(0, 1fr);
+    column-gap: clamp(24px, 2vw, 40px);
+  }
+
+  .tasks-rail {
+    padding-right: 24px;
+  }
+
+  .section-heading {
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+
+  .section-heading p {
+    max-width: 28ch;
+  }
+
+  .section-heading .icon-button {
+    width: 40px;
+    min-height: 40px;
+  }
+
+  .section-heading .text-button, .task-action {
+    min-height: 40px;
+  }
+
+  .task-row {
+    grid-template-columns: 40px minmax(0, 1fr) auto;
+    min-height: 88px;
+  }
+
+  .task-run-icon {
+    width: 40px;
+    height: 40px;
+  }
+
+  .task-details-trigger {
+    display: grid;
+    justify-content: stretch;
+    gap: 4px;
+  }
+
+  .task-name {
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
   .task-details-trigger .task-time {
     display: block;
+  }
+
+  .record-tab {
+    min-height: 36px;
+  }
+
+  .entries-header h2 {
+    font-size: 18px;
+  }
+
+  .entry-row {
+    grid-template-columns: 64px 3px minmax(0, 1.1fr) minmax(0, .8fr) auto;
+    min-height: 84px;
+  }
+
+  .entry-empty strong {
+    font-size: 18px;
+  }
+
+  .entry-empty span {
+    font-size: 14px;
+  }
+
+  .day-pill {
+    font-size: 13px;
+  }
+
+  .day-pill strong {
+    font-size: 18px;
+  }
+
+  .timeline-board {
+    height: clamp(320px, calc(100dvh - 410px), 900px);
+  }
+
+  .time-label {
+    font-size: 12px;
+  }
+
+  .timeline-event-title {
+    font-size: 15px;
+  }
+
+  .timeline-event-notes, .timeline-event-duration {
+    font-size: 13px;
+  }
+
+  .report-grid {
+    grid-template-columns: minmax(0, 1fr) minmax(320px, .45fr);
+  }
+
+  .report-activity, .report-breakdown {
+    padding: clamp(22px, 1.5vw, 32px);
+    min-height: 360px;
+  }
+
+  .bar-chart {
+    height: 280px;
+  }
+
+  .bar-chart[data-range="month"], .bar-chart[data-range="day"], .bar-chart[data-range="year"] {
+    grid-template-columns: repeat(var(--bar-count), minmax(24px, 1fr));
+    gap: 4px;
+  }
+
+  .report-bar-wrap {
+    height: 274px;
+    padding-bottom: 46px;
+  }
+
+  .bar-total, .bar-label, .bar-date {
+    font-size: 12px;
+  }
+
+  .session-row {
+    min-height: 84px;
+  }
+
+  .session-title {
+    overflow-wrap: anywhere;
+  }
+}
+
+/* Keep notes readable when the task rail leaves less room for activity rows. */
+@media (min-width: 821px) and (max-width: 1400px) {
+  .entry-row {
+    grid-template-columns: 56px 3px minmax(0, 1fr) auto;
+    grid-template-rows: auto auto;
+    gap: 4px 12px;
+  }
+
+  .entry-times, .entry-marker {
+    grid-row: 1 / 3;
+  }
+
+  .entry-title {
+    grid-column: 3;
+  }
+
+  .entry-note {
+    grid-column: 3;
+    grid-row: 2;
+  }
+
+  .entry-row > strong {
+    grid-column: 4;
+    grid-row: 1 / 3;
   }
 }
 
@@ -1895,7 +2122,7 @@ dialog::backdrop {
   }
 
   .brand {
-    font-size: 14px;
+    font-size: 16px;
   }
 
   .view.active {
@@ -1909,7 +2136,7 @@ dialog::backdrop {
 
   .tasks-layout {
     gap: 18px;
-    grid-template-columns: 240px minmax(0, 1fr);
+    grid-template-columns: 272px minmax(0, 1fr);
   }
 
   .tasks-rail {
@@ -1925,15 +2152,6 @@ dialog::backdrop {
   }
 
   .record-toolbar .icon-button-label {
-    display: none;
-  }
-
-  .entry-row {
-    gap: 10px;
-    grid-template-columns: 44px 3px minmax(0, 1fr) auto;
-  }
-
-  .entry-note {
     display: none;
   }
 

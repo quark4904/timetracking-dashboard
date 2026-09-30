@@ -184,13 +184,29 @@ class BrowserChecks(unittest.TestCase):
         expect(self.page.locator("#record-tab-tasks")).not_to_be_visible()
         rail = self.page.locator("#tasks-rail")
         activity = self.page.locator("#activity-view")
-        expect(rail).to_be_visible()
-        expect(activity).to_be_visible()
-        self.assertLess(rail.bounding_box()["x"], activity.bounding_box()["x"])
-        self.page.locator("#record-tab-timeline").click()
-        expect(rail).to_be_visible()
-        expect(activity).not_to_be_visible()
-        expect(self.page.locator("#timeline-view")).to_be_visible()
+        wide_activity_width = None
+        for width in (821, 1024, 1280, 1440, 1920, 2560):
+            with self.subTest(width=width):
+                self.page.set_viewport_size({"width": width, "height": 1000})
+                self.page.locator("#record-tab-list").click()
+                expect(rail).to_be_visible()
+                expect(activity).to_be_visible()
+                rail_box = rail.bounding_box()
+                activity_box = activity.bounding_box()
+                self.assertLessEqual(rail_box["x"] + rail_box["width"], activity_box["x"])
+                self.assertTrue(self.page.evaluate("document.documentElement.scrollWidth <= innerWidth"))
+                self.assertGreaterEqual(self.page.locator(".task-name").first.evaluate(
+                    "element => parseFloat(getComputedStyle(element).fontSize)"
+                ), 16)
+                if width == 1920:
+                    wide_activity_width = activity_box["width"]
+                elif width == 2560:
+                    self.assertGreater(activity_box["width"], wide_activity_width)
+                self.page.locator("#record-tab-timeline").click()
+                expect(rail).to_be_visible()
+                expect(activity).not_to_be_visible()
+                expect(self.page.locator("#timeline-view")).to_be_visible()
+                self.assertTrue(self.page.evaluate("document.documentElement.scrollWidth <= innerWidth"))
         self.page.locator(".task-details-trigger").click()
         expect(activity).to_be_visible()
         expect(self.page.locator("#entries-title")).to_have_text("Focus")
@@ -253,7 +269,7 @@ class BrowserChecks(unittest.TestCase):
         expect(self.page.locator("#session-list")).not_to_be_visible()
         self.page.locator(".sessions-panel > summary").click()
         expect(self.page.locator("#session-list .session-row")).to_have_count(2)
-        for width in (320, 390, 768, 1024, 1440):
+        for width in (320, 390, 768, 821, 1024, 1280, 1440, 1920, 2560):
             self.page.set_viewport_size({"width": width, "height": 900})
             for mode in ("day", "week", "month", "year"):
                 self.page.locator(f'[data-report-range="{mode}"]').click()
