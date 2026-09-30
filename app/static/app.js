@@ -791,7 +791,7 @@ function renderTimeline() {
   const daySessions = state.sessions.filter((session) => overlapSeconds(session, dayStart, dayEnd) > 0);
   const labels = Array.from({ length: endHour - startHour + 1 }, (_, index) => {
     const hour = startHour + index;
-    const label = hour === 0 || hour === 24 ? "12 AM" : hour === 12 ? "Noon" : hour > 12 ? `${hour - 12} PM` : `${hour} AM`;
+    const label = `${String(hour).padStart(2, "0")}:00`;
     return `<div class="time-label" style="top:${timelinePadding + index * pxPerHour}px">${label}</div>`;
   }).join("");
   const events = daySessions.map((session) => {
