@@ -66,7 +66,8 @@ class BrowserChecks(unittest.TestCase):
 
     def test_month_end_navigation_does_not_skip_february(self) -> None:
         self.page.locator('[data-view="reports"]').click()
-        self.page.locator('[data-report-range="month"]').click()
+        expect(self.page.locator('[data-report-range="month"]')).to_have_attribute("aria-pressed", "true")
+        expect(self.page.locator(".bar-chart")).to_have_attribute("data-range", "month")
         expect(self.page.locator("#report-current-period")).to_have_attribute("aria-label", "January 2026")
         self.page.locator("#report-next-period").click()
         expect(self.page.locator("#report-current-period")).to_have_attribute("aria-label", "February 2026")

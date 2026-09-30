@@ -32,7 +32,7 @@ const state = {
   activeSession: null,
   reportSessions: [],
   sessionsMonth: null,
-  reportMode: "week",
+  reportMode: "month",
   reportDate: null,
   reportDataKey: null,
   filter: "active",
