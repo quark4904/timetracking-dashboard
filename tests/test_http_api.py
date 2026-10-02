@@ -55,6 +55,24 @@ class HttpApiTestCase(unittest.TestCase):
         self.assertEqual(status, 201)
         return payload
 
+    def test_task_categories_round_trip_and_validation(self) -> None:
+        status, task = self.request("POST", "/api/tasks", {
+            "name": "Entertainment", "color": "#123456", "category": "leisure",
+        })
+        self.assertEqual(status, 201)
+        self.assertEqual(task["category"], "leisure")
+        status, updated = self.request("PATCH", f"/api/tasks/{task['id']}", {"category": "unclassified"})
+        self.assertEqual(status, 200)
+        self.assertEqual(updated["category"], "unclassified")
+        self.assertEqual(self.request("GET", "/api/tasks")[1][0]["category"], "unclassified")
+        self.assertEqual(self.create_task()["category"], "growth")
+        for value in ("invalid", 1, ["growth"]):
+            self.assertIn(self.request("POST", "/api/tasks", {
+                "name": "Invalid", "color": "#123456", "category": value,
+            })[0], (400, 422))
+            self.assertIn(self.request("PATCH", f"/api/tasks/{task['id']}", {"category": value})[0], (400, 422))
+        self.assertEqual(repository.get_task(task["id"])["category"], "unclassified")
+
     def test_task_archive_restore_and_reorder(self) -> None:
         first = self.create_task("First")
         second = self.create_task("Second")

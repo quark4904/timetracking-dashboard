@@ -8,7 +8,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;600;700;800&amp;display=swap" />
     <link rel="icon" href="/static/favicon.svg?v=20260708-1" type="image/svg+xml" />
-    <link rel="stylesheet" href="/static/styles.css?v=b5c5d47ca10d" />
+    <link rel="stylesheet" href="/static/styles.css?v=a1fef047e6de" />
   </head>
   <body>
     <div class="app-shell">
@@ -170,6 +170,17 @@
               </div>
             </div>
           </section>
+          <section class="panel category-summary" aria-label="Growth and leisure balance">
+            <div class="panel-heading"><span>Growth &amp; Leisure</span></div>
+            <div class="category-summary-values">
+              <div><span class="task-category-badge growth">Growth</span><strong id="report-growth-time">0:00</strong><span id="report-growth-percent">0%</span></div>
+              <div><span class="task-category-badge leisure">Leisure</span><strong id="report-leisure-time">0:00</strong><span id="report-leisure-percent">0%</span></div>
+            </div>
+            <div class="category-ratio-bar" id="category-ratio-bar" role="img" aria-label="No classified time in this period">
+              <span id="report-growth-bar" class="growth"></span><span id="report-leisure-bar" class="leisure"></span>
+            </div>
+            <p id="report-category-note">No classified time in this period yet</p>
+          </section>
           <div class="report-grid">
             <section class="panel report-activity" aria-label="Activity summary">
               <div class="panel-heading"><span>Time over the period</span></div>
@@ -201,6 +212,14 @@
           Name
           <input id="task-name" maxlength="80" required autocomplete="off" />
         </label>
+        <label class="task-category-field">
+          Category
+          <select id="task-category">
+            <option value="growth">Growth</option>
+            <option value="leisure">Leisure</option>
+            <option value="unclassified">Unclassified</option>
+          </select>
+        </label>
         <section>
           <div class="color-label">COLOR</div>
           <div class="task-color-grid compact" id="task-colors"></div>
@@ -225,6 +244,14 @@
           <textarea id="edit-task-notes" rows="2" maxlength="2000" placeholder="Notes" aria-label="Task notes"></textarea>
         </section>
 
+        <label class="task-category-field">
+          Category
+          <select id="edit-task-category">
+            <option value="growth">Growth</option>
+            <option value="leisure">Leisure</option>
+            <option value="unclassified">Unclassified</option>
+          </select>
+        </label>
         <section>
           <div class="color-label">COLOR</div>
           <div class="task-color-grid" id="edit-task-colors"></div>
@@ -321,6 +348,6 @@
 
     <div class="toast" id="toast" role="status" aria-live="polite" aria-atomic="true" hidden></div>
 
-    <script type="module" src="/static/app.js?v=2f6bad8e962e"></script>
+    <script type="module" src="/static/app.js?v=917e8f3e7818"></script>
   </body>
 </html>

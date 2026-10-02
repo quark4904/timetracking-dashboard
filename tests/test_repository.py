@@ -23,6 +23,33 @@ class RepositoryTestCase(unittest.TestCase):
     def create_task(self, name: str = "Focus") -> dict:
         return repository.create_task(name, "#123456")
 
+    def test_category_migration_classifies_existing_tasks_once(self) -> None:
+        repository.DB_PATH = Path(self.temp_dir.name) / "legacy.db"
+        with sqlite3.connect(repository.DB_PATH) as conn:
+            conn.execute("CREATE TABLE tasks (id INTEGER PRIMARY KEY, name TEXT NOT NULL, "
+                         "color TEXT NOT NULL, archived INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL)")
+            conn.executemany("INSERT INTO tasks (name, color, created_at) VALUES (?, '#123456', '2020-01-01')",
+                             [("Entertainment",), ("Study",), (" entertainment ",)])
+        repository.init_db()
+        tasks = repository.list_tasks()
+        self.assertEqual([task["category"] for task in tasks], ["leisure", "growth", "leisure"])
+        repository.update_task(tasks[0]["id"], None, None, None, category="growth")
+        repository.init_db()
+        self.assertEqual(repository.get_task(tasks[0]["id"])["category"], "growth")
+
+    def test_category_changes_apply_to_existing_sessions(self) -> None:
+        task = repository.create_task("Entertainment", "#123456", "leisure")
+        session = repository.create_session(task["id"], "2020-01-01T00:00:00+00:00",
+                                            "2020-01-01T01:00:00+00:00", "")
+        self.assertEqual(session["task_category"], "leisure")
+        repository.update_task(task["id"], None, None, None, category="growth")
+        self.assertEqual(repository.list_sessions()[0]["task_category"], "growth")
+        self.assertEqual(repository.get_session(session["id"])["task_category"], "growth")
+        with self.assertRaisesRegex(ValueError, "category must be"):
+            repository.create_task("Invalid", "#123456", "other")
+        with self.assertRaisesRegex(ValueError, "category must be"):
+            repository.update_task(task["id"], None, None, None, category="other")
+
     def test_task_values_are_normalized_and_validated(self) -> None:
         task = self.create_task("  Focus  ")
 

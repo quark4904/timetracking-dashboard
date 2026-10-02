@@ -94,6 +94,12 @@ def validate_color(color: str) -> str:
     return color
 
 
+def validate_category(category: str) -> str:
+    if category not in ("growth", "leisure", "unclassified"):
+        raise ValueError("category must be growth, leisure, or unclassified")
+    return category
+
+
 def init_db() -> None:
     with connect() as conn:
         conn.execute("PRAGMA journal_mode = WAL")
@@ -126,6 +132,10 @@ def init_db() -> None:
         for column, statement in migrations.items():
             if column not in existing_columns:
                 conn.execute(statement)
+        if "category" not in existing_columns:
+            conn.execute("ALTER TABLE tasks ADD COLUMN category TEXT NOT NULL DEFAULT 'growth' "
+                         "CHECK (category IN ('growth', 'leisure', 'unclassified'))")
+            conn.execute("UPDATE tasks SET category = 'leisure' WHERE lower(trim(name)) = 'entertainment'")
         conn.execute(
             """
             UPDATE tasks
@@ -190,14 +200,15 @@ def list_tasks(include_archived: bool = False) -> list[dict]:
         return [row_to_dict(row) for row in rows]
 
 
-def create_task(name: str, color: str) -> dict:
+def create_task(name: str, color: str, category: str = "growth") -> dict:
     normalized_name = normalize_task_name(name)
     validated_color = validate_color(color)
+    validated_category = validate_category(category)
     with connect() as conn:
         next_order = conn.execute("SELECT COALESCE(MAX(sort_order), 0) + 1 FROM tasks").fetchone()[0]
         cursor = conn.execute(
-            "INSERT INTO tasks (name, color, sort_order, created_at) VALUES (?, ?, ?, ?)",
-            (normalized_name, validated_color, next_order, utc_now()),
+            "INSERT INTO tasks (name, color, category, sort_order, created_at) VALUES (?, ?, ?, ?, ?)",
+            (normalized_name, validated_color, validated_category, next_order, utc_now()),
         )
         return row_to_dict(conn.execute("SELECT * FROM tasks WHERE id = ?", (cursor.lastrowid,)).fetchone())
 
@@ -208,6 +219,7 @@ def update_task(
     color: str | None,
     archived: bool | None,
     notes: str | None = None,
+    category: str | None = None,
 ) -> dict | None:
     fields = []
     values = []
@@ -225,6 +237,9 @@ def update_task(
     if notes is not None:
         fields.append("notes = ?")
         values.append(normalize_notes(notes))
+    if category is not None:
+        fields.append("category = ?")
+        values.append(validate_category(category))
     if not fields:
         return get_task(task_id)
     values.append(task_id)
@@ -386,7 +401,7 @@ def get_session(session_id: int, conn: sqlite3.Connection | None = None) -> dict
     try:
         row = conn.execute(
             """
-            SELECT s.*, t.name AS task_name, t.color AS task_color
+            SELECT s.*, t.name AS task_name, t.color AS task_color, t.category AS task_category
             FROM sessions s
             JOIN tasks t ON t.id = s.task_id
             WHERE s.id = ?
@@ -448,7 +463,7 @@ def list_sessions(start: str | None = None, end: str | None = None) -> list[dict
     with connect() as conn:
         rows = conn.execute(
             f"""
-            SELECT s.*, t.name AS task_name, t.color AS task_color
+            SELECT s.*, t.name AS task_name, t.color AS task_color, t.category AS task_category
             FROM sessions s
             JOIN tasks t ON t.id = s.task_id
             {where}

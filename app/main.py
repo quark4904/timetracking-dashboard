@@ -3,7 +3,7 @@ from __future__ import annotations
 from contextlib import asynccontextmanager
 from datetime import datetime
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Literal
 
 from fastapi import FastAPI, HTTPException, Response
 from fastapi.responses import FileResponse
@@ -27,12 +27,17 @@ app = FastAPI(title="Timetracking Dashboard", lifespan=lifespan)
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 
+TaskCategory = Literal["growth", "leisure", "unclassified"]
+
+
 class TaskCreate(BaseModel):
     name: TaskName
+    category: TaskCategory = "growth"
     color: str = Field(pattern=r"^#[0-9a-fA-F]{6}$")
 
 
 class TaskUpdate(BaseModel):
+    category: TaskCategory | None = None
     name: TaskName | None = None
     color: str | None = Field(default=None, pattern=r"^#[0-9a-fA-F]{6}$")
     archived: bool | None = None
@@ -74,7 +79,7 @@ def tasks(include_archived: bool = False) -> list[dict]:
 
 @app.post("/api/tasks", status_code=201)
 def create_task(payload: TaskCreate) -> dict:
-    return repository.create_task(payload.name, payload.color)
+    return repository.create_task(payload.name, payload.color, payload.category)
 
 
 @app.patch("/api/tasks/{task_id}")
@@ -85,6 +90,7 @@ def update_task(task_id: int, payload: TaskUpdate) -> dict:
         payload.color,
         payload.archived,
         payload.notes,
+        payload.category,
     )
     if task is None:
         raise HTTPException(status_code=404, detail="Task not found")

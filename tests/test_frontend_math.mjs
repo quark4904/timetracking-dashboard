@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 
 import {
   createReportBuckets,
+  reportCategorySummary,
   reportRangeFor,
   reportModeStep,
   reportSessionSegments,
@@ -58,3 +59,17 @@ assert.equal(createReportBuckets("month", { start: "2026-02-01", end: "2026-03-0
 assert.equal(createReportBuckets("year", { start: "2026-01-01", end: "2027-01-01" }).length, 12);
 
 console.log("frontend math tests passed");
+
+const categoryTasks = [
+  { id: 1, category: "growth" },
+  { id: 2, category: "leisure", archived: 1 },
+  { id: 3, category: "unclassified" },
+];
+assert.deepEqual(reportCategorySummary(new Map([[1, 7200], [2, 4800], [3, 3600], [4, 1800]]), categoryTasks), {
+  growth: 7200, leisure: 4800, unclassified: 5400, classified: 12000, growthPercent: 60, leisurePercent: 40,
+});
+assert.deepEqual(reportCategorySummary(new Map([[3, 3600]]), categoryTasks), {
+  growth: 0, leisure: 0, unclassified: 3600, classified: 0, growthPercent: 0, leisurePercent: 0,
+});
+assert.equal(reportCategorySummary(new Map(), categoryTasks).growthPercent, 0);
+assert.equal(reportCategorySummary(new Map([[1, 1], [2, 2]]), categoryTasks).leisurePercent, 67);

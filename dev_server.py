@@ -63,7 +63,7 @@ class Handler(BaseHTTPRequestHandler):
             if payload is None:
                 return
             try:
-                task = repository.create_task(payload["name"], payload["color"])
+                task = repository.create_task(payload["name"], payload["color"], payload.get("category", "growth"))
             except (KeyError, ValueError) as exc:
                 return self.send_error(400, str(exc))
             return self.send_json(task, status=201)
@@ -157,6 +157,7 @@ class Handler(BaseHTTPRequestHandler):
                     payload.get("color"),
                     payload.get("archived"),
                     payload.get("notes"),
+                    payload.get("category"),
                 )
             except (TypeError, ValueError) as exc:
                 return self.send_error(400, str(exc))

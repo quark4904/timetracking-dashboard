@@ -174,3 +174,15 @@ export function reportSessionSegments(sessions, range) {
   });
   return segments.sort((a, b) => new Date(b.segment_started_at) - new Date(a.segment_started_at));
 }
+
+export function reportCategorySummary(totalByTask, tasks) {
+  const categories = new Map(tasks.map((task) => [task.id, task.category]));
+  const seconds = { growth: 0, leisure: 0, unclassified: 0 };
+  totalByTask.forEach((total, taskId) => {
+    const category = categories.get(taskId);
+    seconds[category === "growth" || category === "leisure" ? category : "unclassified"] += total;
+  });
+  const classified = seconds.growth + seconds.leisure;
+  const growthPercent = classified ? Math.round(seconds.growth / classified * 100) : 0;
+  return { ...seconds, classified, growthPercent, leisurePercent: classified ? 100 - growthPercent : 0 };
+}

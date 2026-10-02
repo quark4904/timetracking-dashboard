@@ -16,13 +16,14 @@ import {
 } from "./modules/date-time.mjs?v=62e6b0017bd5";
 import {
   createReportBuckets,
+  reportCategorySummary,
   currentReportDateForMode,
   reportModeStep,
   reportPeriodCompactLabel,
   reportPeriodLabel,
   reportRangeFor,
   reportSessionSegments,
-} from "./modules/reporting.mjs?v=5cc2dc1e90a5";
+} from "./modules/reporting.mjs?v=3019c2cc44fa";
 
 const state = {
   tasks: [],
@@ -433,6 +434,15 @@ function groupedSessionsByDate(sessions) {
   }, new Map());
 }
 
+function categoryLabel(category) {
+  return { growth: "Growth", leisure: "Leisure" }[category] || "Unclassified";
+}
+
+function taskCategoryBadge(task) {
+  const category = ["growth", "leisure"].includes(task.category) ? task.category : "unclassified";
+  return `<span class="task-category-badge ${category}">${categoryLabel(category)}</span>`;
+}
+
 function renderTasks() {
   const list = document.getElementById("task-list");
   const entryList = document.getElementById("tasks-entry-list");
@@ -457,7 +467,7 @@ function renderTasks() {
         <div class="task-row editing" style="--task-color:${task.color}" data-task-id="${task.id}" draggable="true">
           <div class="task-main">
             <span class="task-run-icon">${icons.play}</span>
-            <span class="task-name">${escapeHtml(task.name)}</span>
+            <span class="task-copy"><span class="task-name">${escapeHtml(task.name)}</span>${taskCategoryBadge(task)}</span>
           </div>
           <button class="task-info-button" type="button" aria-label="Edit ${escapeHtml(task.name)}">${icons.info}</button>
           <div class="task-reorder-controls" aria-label="Reorder ${escapeHtml(task.name)}">
@@ -484,7 +494,7 @@ function renderTasks() {
         <button class="task-details-trigger" type="button" aria-label="Show time entries for ${escapeHtml(task.name)}" aria-controls="tasks-entry-list" aria-pressed="${isSelected}">
           <span class="task-copy">
             <span class="task-name">${escapeHtml(task.name)}</span>
-            ${startedLabel}
+            <span class="task-metadata">${taskCategoryBadge(task)}${startedLabel}</span>
           </span>
           <span class="task-time">${timeLabel}</span>
         </button>
@@ -698,6 +708,7 @@ function openTaskEditor(taskId) {
   state.editingTaskId = taskId;
   state.editingTaskColor = task.color;
   document.getElementById("edit-task-name").value = task.name;
+  document.getElementById("edit-task-category").value = task.category || "unclassified";
   document.getElementById("edit-task-notes").value = task.notes || "";
   const archiveButton = document.getElementById("archive-current-task");
   archiveButton.hidden = false;
@@ -844,6 +855,21 @@ function centerReportToday() {
   return true;
 }
 
+function renderCategorySummary(totalByTask) {
+  const summary = reportCategorySummary(totalByTask, state.tasks);
+  for (const category of ["growth", "leisure"]) {
+    document.getElementById(`report-${category}-time`).textContent = formatDuration(summary[category]);
+    document.getElementById(`report-${category}-percent`).textContent = `${summary[`${category}Percent`]}%`;
+    document.getElementById(`report-${category}-bar`).style.width = `${summary.classified ? summary[category] / summary.classified * 100 : 0}%`;
+  }
+  document.getElementById("category-ratio-bar").setAttribute("aria-label",
+    summary.classified ? `Growth ${summary.growthPercent}%, Leisure ${summary.leisurePercent}%` : "No classified time in this period");
+  const note = document.getElementById("report-category-note");
+  note.textContent = summary.unclassified
+    ? `Unclassified: ${formatDuration(summary.unclassified)} · Excluded from the ratio`
+    : summary.classified ? "Share of classified tracked time" : "No classified time in this period yet";
+}
+
 function renderReports() {
   const totalByTask = new Map();
   const range = reportRange();
@@ -866,6 +892,7 @@ function renderReports() {
   });
   const total = buckets.reduce((sum, bucket) => sum + bucket.total, 0);
   const activeBucketCount = buckets.filter((bucket) => bucket.total > 0).length;
+  renderCategorySummary(totalByTask);
   document.getElementById("total-time").textContent = formatDuration(total);
   document.getElementById("average-label").textContent = averageLabelText(state.reportMode);
   document.getElementById("period-average").textContent = formatDuration(total / Math.max(1, activeBucketCount));
@@ -1420,6 +1447,7 @@ document.getElementById("task-edit-toggle").addEventListener("click", () => {
 
 document.getElementById("add-task").addEventListener("click", () => {
   state.newTaskColor = taskColors[7];
+  document.getElementById("task-category").value = "growth";
   renderTaskColorPicker("task-colors", state.newTaskColor, (color) => {
     state.newTaskColor = color;
   });
@@ -1437,7 +1465,7 @@ document.getElementById("task-form").addEventListener("submit", async (event) =>
     const color = state.newTaskColor;
     if (!name) return;
     try {
-      await api("/api/tasks", { method: "POST", body: JSON.stringify({ name, color }) });
+      await api("/api/tasks", { method: "POST", body: JSON.stringify({ name, color, category: document.getElementById("task-category").value }) });
       document.getElementById("task-name").value = "";
       document.getElementById("task-dialog").close();
       await reloadVisibleData();
@@ -1522,6 +1550,7 @@ document.getElementById("task-edit-form").addEventListener("submit", async (even
           name,
           color: state.editingTaskColor,
           notes: document.getElementById("edit-task-notes").value,
+          category: document.getElementById("edit-task-category").value,
         }),
       });
       closeTaskEditor();
