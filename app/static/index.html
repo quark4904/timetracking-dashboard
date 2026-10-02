@@ -8,7 +8,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;600;700;800&amp;display=swap" />
     <link rel="icon" href="/static/favicon.svg?v=20260708-1" type="image/svg+xml" />
-    <link rel="stylesheet" href="/static/styles.css?v=709f5a2e6e27" />
+    <link rel="stylesheet" href="/static/styles.css?v=b5c5d47ca10d" />
   </head>
   <body>
     <div class="app-shell">
@@ -240,9 +240,8 @@
     <dialog id="session-dialog" class="session-dialog">
       <form method="dialog" class="session-form" id="session-form">
         <header class="session-form-header">
-          <button type="button" class="text-button" id="cancel-session-edit">Cancel</button>
           <h2 id="session-dialog-title">Edit Session</h2>
-          <button type="submit" class="text-button" id="save-session">Save</button>
+          <button type="button" class="delete-session-button" id="delete-session">Delete Session</button>
         </header>
 
         <div class="session-form-body">
@@ -295,9 +294,12 @@
             <span>Notes</span>
             <textarea id="session-notes" rows="5" placeholder="Notes"></textarea>
           </label>
-
-          <button type="button" class="delete-session-button" id="delete-session">Delete Session</button>
         </div>
+
+        <footer class="session-form-footer">
+          <button type="button" class="text-button" id="cancel-session-edit">Cancel</button>
+          <button type="submit" class="primary-button" id="save-session">Save</button>
+        </footer>
       </form>
     </dialog>
 
@@ -319,6 +321,6 @@
 
     <div class="toast" id="toast" role="status" aria-live="polite" aria-atomic="true" hidden></div>
 
-    <script type="module" src="/static/app.js?v=dc13204df151"></script>
+    <script type="module" src="/static/app.js?v=2f6bad8e962e"></script>
   </body>
 </html>

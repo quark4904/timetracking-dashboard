@@ -74,6 +74,69 @@ class BrowserChecks(unittest.TestCase):
         self.page.locator("#report-prev-period").click()
         expect(self.page.locator("#report-current-period")).to_have_attribute("aria-label", "January 2026")
 
+    def test_mobile_month_chart_centers_today_on_entry_and_reload(self) -> None:
+        context = self.browser.new_context(viewport={"width": 390, "height": 844},
+                                           timezone_id="America/Los_Angeles")
+        self.addCleanup(context.close)
+        page = context.new_page()
+        page_errors = []
+        page.on("pageerror", lambda error: page_errors.append(str(error)))
+        self.addCleanup(self.assertEqual, page_errors, [])
+        page.clock.install(time=datetime.fromisoformat("2026-01-01T00:30:00+09:00"))
+
+        def expect_today_centered(date: str) -> None:
+            chart = page.locator("#bar-chart")
+            expect(chart).to_have_attribute("data-range", "month")
+            expect(chart.locator(f'[data-date="{date}"]')).to_be_attached()
+            error = chart.evaluate("""(chart, date) => {
+                const day = chart.querySelector(`[data-date="${date}"]`).getBoundingClientRect();
+                const rect = chart.getBoundingClientRect();
+                return Math.abs(day.left + day.width / 2 - rect.left - chart.clientWidth / 2);
+            }""", date)
+            self.assertLessEqual(error, 1)
+            self.assertTrue(page.evaluate("document.documentElement.scrollWidth <= innerWidth"))
+
+        for day in (1, 15, 31):
+            date = f"2026-01-{day:02d}"
+            page.clock.set_fixed_time(datetime.fromisoformat(f"{date}T00:30:00+09:00"))
+            page.goto(self.base_url)
+            page.locator('[data-view="reports"]').click()
+            expect_today_centered(date)
+            # A refresh must not pull the chart away from the user's chosen days.
+            chart = page.locator("#bar-chart")
+            chart.evaluate("chart => chart.scrollLeft = 80")
+            before = chart.evaluate("chart => chart.scrollLeft")
+            with page.expect_response("**/api/sessions?*"):
+                page.clock.run_for(60_000)
+            page.wait_for_load_state("networkidle")
+            self.assertAlmostEqual(chart.evaluate("chart => chart.scrollLeft"), before, delta=1)
+            page.locator('[data-view="tasks"]').click()
+            page.locator('[data-view="reports"]').click()
+            expect_today_centered(date)
+            page.reload()
+            page.locator('[data-view="reports"]').click()
+            expect_today_centered(date)
+
+        for width in (320, 768):
+            page.set_viewport_size({"width": width, "height": 844})
+            page.locator('[data-view="tasks"]').click()
+            page.locator('[data-view="reports"]').click()
+            expect_today_centered("2026-01-31")
+        page.locator("#report-prev-period").click()
+        expect(page.locator("#bar-chart")).to_have_attribute("data-period", "month:2025-12-01")
+        self.assertFalse(page.locator("#bar-chart").evaluate("chart => chart.hasAttribute('data-center-today')"))
+        self.assertEqual(page.locator("#bar-chart").evaluate("chart => chart.scrollLeft"), 0)
+        page.locator("#report-current-reset").click()
+        expect_today_centered("2026-01-31")
+
+    def test_desktop_month_chart_keeps_full_width_without_centering(self) -> None:
+        self.page.set_viewport_size({"width": 1920, "height": 1080})
+        self.page.locator('[data-view="reports"]').click()
+        chart = self.page.locator("#bar-chart")
+        expect(chart).to_have_attribute("data-range", "month")
+        self.assertEqual(chart.evaluate("chart => chart.scrollLeft"), 0)
+        self.assertLessEqual(chart.evaluate("chart => chart.scrollWidth"), chart.evaluate("chart => chart.clientWidth"))
+
     def test_today_defaults_can_be_saved(self) -> None:
         self.page.locator('[data-record-view="timeline"].record-tab').click()
         self.page.locator("#timeline-add-session").click()
@@ -159,6 +222,72 @@ class BrowserChecks(unittest.TestCase):
         expect(page.locator("#active-session-control")).to_be_in_viewport()
         page.locator("#active-session-control").click()
         expect(page.locator("#active-session-control")).to_be_disabled()
+
+    def test_mobile_session_actions_follow_keyboard_viewport(self) -> None:
+        context = self.browser.new_context(**self.playwright.devices["iPhone 13"])
+        self.addCleanup(context.close)
+        page = context.new_page()
+        page.clock.install(time=datetime.fromisoformat("2026-01-31T12:15:42+09:00"))
+        page.goto(self.base_url)
+        page.locator("#record-tab-list").click()
+        page.locator(f'#tasks-entry-list [data-session-id="{self.session["id"]}"]').click()
+        expect(page.locator("#delete-session")).to_be_visible()
+        self.assertLess(page.locator("#delete-session").bounding_box()["y"],
+                        page.locator("#session-notes").bounding_box()["y"])
+        page.locator("#session-notes").fill("keyboard note")
+
+        # Model iOS: the keyboard changes the visual viewport, while layout
+        # height stays unchanged. Also model Safari panning the viewport.
+        layout_height = page.evaluate("innerHeight")
+        page.evaluate("""() => {
+            Object.defineProperty(visualViewport, 'height', {configurable: true, get: () => 420});
+            Object.defineProperty(visualViewport, 'offsetTop', {configurable: true, get: () => 110});
+            visualViewport.dispatchEvent(new Event('resize'));
+            visualViewport.dispatchEvent(new Event('scroll'));
+        }""")
+        self.assertEqual(page.evaluate("innerHeight"), layout_height)
+
+        def assert_actions_above_keyboard() -> None:
+            dialog = page.locator("#session-dialog").bounding_box()
+            self.assertAlmostEqual(dialog["y"], 110, delta=1)
+            self.assertAlmostEqual(dialog["height"], 420, delta=1)
+            for button_id in ("save-session", "cancel-session-edit"):
+                button = page.locator(f"#{button_id}").bounding_box()
+                self.assertGreaterEqual(button["y"], 110)
+                self.assertLessEqual(button["y"] + button["height"], 530)
+                self.assertTrue(page.locator(f"#{button_id}").evaluate("""button => {
+                    const rect = button.getBoundingClientRect();
+                    return document.elementFromPoint(rect.x + rect.width / 2,
+                        rect.y + rect.height / 2) === button;
+                }"""))
+
+        assert_actions_above_keyboard()
+        page.locator("#session-form .session-form-body").evaluate("body => body.scrollTop = body.scrollHeight")
+        assert_actions_above_keyboard()
+        with page.expect_response(lambda response: response.request.method == "PATCH") as saved:
+            page.locator("#save-session").click()
+        self.assertEqual(saved.value.status, 200)
+        self.assertEqual(saved.value.json()["notes"], "keyboard note")
+        expect(page.locator("#session-dialog")).not_to_be_visible()
+
+        page.locator("#record-tab-timeline").click()
+        page.locator("#timeline-add-session").click()
+        expect(page.locator("#delete-session")).not_to_be_visible()
+        expect(page.locator("#save-session")).to_have_text("Create")
+        assert_actions_above_keyboard()
+        page.locator("#cancel-session-edit").click()
+        expect(page.locator("#session-dialog")).not_to_be_visible()
+
+        # Closing the keyboard restores the full-height sheet on reopening.
+        page.evaluate("""() => {
+            delete visualViewport.height;
+            delete visualViewport.offsetTop;
+            visualViewport.dispatchEvent(new Event('resize'));
+        }""")
+        page.locator("#timeline-add-session").click()
+        dialog = page.locator("#session-dialog").bounding_box()
+        self.assertAlmostEqual(dialog["y"], 0, delta=1)
+        self.assertAlmostEqual(dialog["height"], layout_height, delta=1)
 
     def test_task_history_click_does_not_start_timer(self) -> None:
         other = repository.create_task("Other", "#654321")

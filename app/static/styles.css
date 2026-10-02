@@ -1550,6 +1550,46 @@ dialog::backdrop {
   gap: 18px;
 }
 
+/* Keep session actions visible while only the fields scroll. */
+#session-dialog {
+  overflow: hidden;
+}
+
+#session-form {
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  max-height: calc(100dvh - 50px);
+}
+
+#session-form .session-form-header {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+#session-form .session-form-body {
+  min-height: 0;
+  overflow-y: auto;
+  grid-auto-rows: max-content;
+  align-content: start;
+  padding: 2px;
+}
+
+#session-form .delete-session-button {
+  padding-inline: 12px;
+}
+
+.session-form-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+  background: var(--bg);
+}
+
+.session-form-footer button {
+  min-height: 44px;
+  min-width: 88px;
+}
+
 .session-form input, .session-form select, .session-form textarea {
   color: var(--text);
   background: transparent;
@@ -2729,6 +2769,12 @@ dialog::backdrop {
     gap: 10px;
   }
 
+  /* End spacing lets even the first and last day sit in the center. */
+  .bar-chart[data-range="month"][data-center-today] {
+    grid-template-columns: repeat(var(--bar-count), 24px);
+    padding-inline: calc(50% - 12px);
+  }
+
   .bar-total {
     font-size: 8px;
   }
@@ -2816,6 +2862,33 @@ dialog::backdrop {
 
   .session-form-body {
     gap: 16px;
+  }
+
+  #session-dialog {
+    top: var(--session-viewport-top, 0px);
+    bottom: auto;
+    height: var(--session-viewport-height, 100dvh);
+    max-height: var(--session-viewport-height, 100dvh);
+  }
+
+  #session-form {
+    height: 100%;
+    max-height: 100%;
+    padding: 0 20px;
+    gap: 16px;
+  }
+
+  #session-form .session-form-header {
+    position: static;
+  }
+
+  .session-form-footer {
+    padding: 12px 0 max(12px, env(safe-area-inset-bottom));
+  }
+
+  .session-form-footer button {
+    min-height: 48px;
+    font-size: 14px;
   }
 
   .session-time-card .session-time-input {

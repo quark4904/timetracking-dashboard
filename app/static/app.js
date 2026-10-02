@@ -35,6 +35,7 @@ const state = {
   reportMode: "month",
   reportDate: null,
   reportDataKey: null,
+  reportShouldCenterToday: true,
   filter: "active",
   activeView: "tasks",
   recordView: "list",
@@ -830,6 +831,19 @@ function renderTimeline() {
   bindSessionEditTriggers(board);
 }
 
+function centerReportToday() {
+  if (!mobileLayout.matches || state.activeView !== "reports") return false;
+  const chart = document.getElementById("bar-chart");
+  if (!chart.hasAttribute("data-center-today")) return false;
+  const today = chart.querySelector(`[data-date="${kstDateKey(new Date())}"]`);
+  if (!today || !chart.clientWidth) return false;
+  const chartRect = chart.getBoundingClientRect();
+  const todayRect = today.getBoundingClientRect();
+  chart.scrollLeft += todayRect.left + todayRect.width / 2
+    - chartRect.left - chart.clientLeft - chart.clientWidth / 2;
+  return true;
+}
+
 function renderReports() {
   const totalByTask = new Map();
   const range = reportRange();
@@ -892,7 +906,14 @@ function renderReports() {
 
   const maxBucket = Math.max(3600, ...buckets.map((bucket) => bucket.total));
   const chart = document.getElementById("bar-chart");
+  const previousScrollLeft = chart.scrollLeft;
+  const periodChanged = chart.dataset.period !== range.key;
+  const today = kstDateKey(new Date());
+  if (periodChanged || chart.dataset.today !== today) state.reportShouldCenterToday = true;
+  chart.dataset.period = range.key;
+  chart.dataset.today = today;
   chart.dataset.range = state.reportMode;
+  chart.toggleAttribute("data-center-today", state.reportMode === "month" && buckets.some((bucket) => bucket.key === today));
   chart.style.setProperty("--bar-count", buckets.length);
   chart.innerHTML = buckets.map((bucket) => {
     const height = bucket.total > 0 ? Math.max(8, (bucket.total / maxBucket) * 210) : 1;
@@ -905,13 +926,18 @@ function renderReports() {
       .join("");
     const label = bucket.total > 0 ? `<span class="bar-total">${formatDuration(bucket.total)}</span>` : "";
     return `
-      <div class="report-bar-wrap">
+      <div class="report-bar-wrap" data-date="${bucket.key}">
         ${label}
         <div class="report-bar" style="height:${height}px">${segments}</div>
         <span class="bar-label">${bucket.label}</span>
       </div>
     `;
   }).join("");
+  if (state.reportShouldCenterToday && centerReportToday()) {
+    state.reportShouldCenterToday = false;
+  } else {
+    chart.scrollLeft = periodChanged ? 0 : previousScrollLeft;
+  }
 
   const breakdown = state.tasks
     .filter((task) => totalByTask.has(task.id))
@@ -1122,6 +1148,20 @@ function setSessionTime(prefix, value) {
   document.getElementById(`session-${prefix}-minute`).value = minute;
 }
 
+function syncSessionViewport() {
+  const dialog = document.getElementById("session-dialog");
+  if (!dialog.open) return;
+  const viewport = window.visualViewport;
+  if (mobileLayout.matches && viewport) {
+    // iOS keyboards shrink the visual viewport without resizing 100dvh.
+    dialog.style.setProperty("--session-viewport-top", `${viewport.offsetTop}px`);
+    dialog.style.setProperty("--session-viewport-height", `${viewport.height}px`);
+  } else {
+    dialog.style.removeProperty("--session-viewport-top");
+    dialog.style.removeProperty("--session-viewport-height");
+  }
+}
+
 function openSessionCreator() {
   const task = state.tasks.find((item) => !item.archived) || state.tasks[0];
   if (!task) return;
@@ -1138,6 +1178,7 @@ function openSessionCreator() {
   showSessionFormError("");
   updateSessionDurationPreview();
   document.getElementById("session-dialog").showModal();
+  syncSessionViewport();
 }
 
 function openSessionEditor(sessionId) {
@@ -1161,6 +1202,7 @@ function openSessionEditor(sessionId) {
   showSessionFormError("");
   updateSessionDurationPreview();
   document.getElementById("session-dialog").showModal();
+  syncSessionViewport();
 }
 
 function closeSessionEditor() {
@@ -1296,10 +1338,19 @@ async function showView(viewName) {
   document.querySelectorAll(".view").forEach((view) => view.classList.toggle("active", view.id === `${viewName}-view`));
   hideChartTooltip();
   if (viewName === "tasks") setRecordView(state.recordView);
-  if (viewName === "reports") await loadReportData();
+  if (viewName === "reports") {
+    state.reportShouldCenterToday = true;
+    await loadReportData();
+  }
 }
 
-mobileLayout.addEventListener("change", () => setRecordView(state.recordView));
+mobileLayout.addEventListener("change", () => {
+  setRecordView(state.recordView);
+  if (mobileLayout.matches) {
+    state.reportShouldCenterToday = true;
+    if (centerReportToday()) state.reportShouldCenterToday = false;
+  }
+});
 document.querySelectorAll(".record-tab").forEach((button) => {
   button.addEventListener("click", () => setRecordView(button.dataset.recordView));
   button.addEventListener("keydown", (event) => {
@@ -1435,11 +1486,13 @@ document.getElementById("report-next-period").addEventListener("click", async ()
 document.getElementById("report-current-reset").addEventListener("click", async () => {
   state.reportDate = currentReportDateForMode(state.reportMode);
   state.reportDataKey = null;
+  state.reportShouldCenterToday = true;
   await runSafely(() => loadReportData(true), "Could not load reports.");
 });
 document.getElementById("report-current-period").addEventListener("click", async () => {
   state.reportDate = currentReportDateForMode(state.reportMode);
   state.reportDataKey = null;
+  state.reportShouldCenterToday = true;
   await runSafely(() => loadReportData(true), "Could not load reports.");
 });
 document.getElementById("timeline-date").addEventListener("click", () => {
@@ -1514,6 +1567,9 @@ document.getElementById("archive-current-task").addEventListener("click", async 
   });
 });
 document.getElementById("cancel-session-edit").addEventListener("click", closeSessionEditor);
+window.visualViewport?.addEventListener("resize", syncSessionViewport);
+window.visualViewport?.addEventListener("scroll", syncSessionViewport);
+mobileLayout.addEventListener("change", syncSessionViewport);
 document.getElementById("session-task-button").addEventListener("click", () => {
   const menu = document.getElementById("session-task-menu");
   if (menu.classList.contains("open")) closeSessionTaskMenu();
