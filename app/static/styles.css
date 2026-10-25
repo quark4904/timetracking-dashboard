@@ -570,7 +570,7 @@ h2 {
   grid-template-columns: 34px minmax(0, 1fr) auto;
   align-items: center;
   gap: 10px;
-  min-height: 76px;
+  min-height: 64px;
   padding: 10px 8px;
   border: 1px solid transparent;
   border-radius: 12px;
@@ -659,8 +659,24 @@ h2 {
   white-space: nowrap;
 }
 
-.task-details-trigger .task-time {
-  display: none;
+.task-details-trigger .task-copy {
+  width: 100%;
+}
+
+.task-heading {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+
+.task-heading .task-name {
+  min-width: 0;
+}
+
+.task-heading .task-time {
+  flex-shrink: 0;
+  font-size: 11px;
 }
 
 .task-row.running .task-time {
@@ -2021,7 +2037,7 @@ dialog::backdrop {
 
   .task-row {
     grid-template-columns: 40px minmax(0, 1fr) auto;
-    min-height: 88px;
+    min-height: 64px;
   }
 
   .task-run-icon {
@@ -2497,7 +2513,7 @@ dialog::backdrop {
   }
 
   .task-row {
-    min-height: 82px;
+    min-height: 64px;
     grid-template-columns: 44px minmax(0, 1fr) 54px;
     gap: 12px;
     padding: 10px 6px;
@@ -2519,7 +2535,7 @@ dialog::backdrop {
   .task-details-trigger {
     min-height: 48px;
     display: grid;
-    justify-content: start;
+    justify-content: stretch;
     gap: 4px;
   }
 

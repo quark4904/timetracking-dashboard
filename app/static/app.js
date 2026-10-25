@@ -487,16 +487,18 @@ function renderTasks() {
     const isSelected = state.selectedTaskId === task.id;
     const icon = isRunning ? "pause" : "play";
     const timeLabel = isRunning ? formatLiveDuration(secondsBetween(active.started_at, null)) : formatDuration(taskTotal(task));
-    const startedLabel = `<span class="task-started">${isRunning ? `Started ${timeFmt.format(new Date(active.started_at))}` : "Total tracked"}</span>`;
+    const startedLabel = isRunning ? `<span class="task-started">Started ${timeFmt.format(new Date(active.started_at))}</span>` : "";
     return `
       <div class="task-row ${isRunning ? "running" : ""} ${isSelected ? "selected" : ""}" style="--task-color:${task.color}" data-task-id="${task.id}">
         <button class="task-run-icon task-timer-toggle" type="button" aria-label="${isRunning ? "Stop" : "Start"} tracking ${escapeHtml(task.name)}">${icons[icon]}</button>
         <button class="task-details-trigger" type="button" aria-label="Show time entries for ${escapeHtml(task.name)}" aria-controls="tasks-entry-list" aria-pressed="${isSelected}">
           <span class="task-copy">
-            <span class="task-name">${escapeHtml(task.name)}</span>
+            <span class="task-heading">
+              <span class="task-name">${escapeHtml(task.name)}</span>
+              <span class="task-time">${timeLabel}</span>
+            </span>
             <span class="task-metadata">${taskCategoryBadge(task)}${startedLabel}</span>
           </span>
-          <span class="task-time">${timeLabel}</span>
         </button>
         <button class="task-action task-timer-toggle" type="button" aria-label="${isRunning ? "Stop" : "Start"} tracking ${escapeHtml(task.name)}">${isRunning ? "Stop" : "Start"}</button>
       </div>
